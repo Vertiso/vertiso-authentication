@@ -4,6 +4,8 @@ module Vertiso
   module Authentication
     # Configures the host application's principal and authentication flows.
     class Configuration
+      attr_reader :oauth_providers
+
       attr_accessor :principal_class_name,
                     :email_attribute,
                     :user_name_attribute,
@@ -49,6 +51,7 @@ module Vertiso
         @mailer_host = nil
         @mailer_url_options = {}
         @dispatch_error_reporter = nil
+        @oauth_providers = []
       end
 
       # Resolves the configured host principal class only when it is used.
@@ -56,6 +59,23 @@ module Vertiso
       # @return [Class]
       def principal_class
         principal_class_name.constantize
+      end
+
+      # Registers deferred host values for an OmniAuth strategy.
+      #
+      # Re-registering a strategy replaces its previous registration.
+      #
+      # @param name [String, Symbol] OmniAuth strategy name
+      # @param resolvers [Hash{Symbol=>Object, #call}] provider literals or
+      #   zero-argument callables
+      # @return [Vertiso::Authentication::ProviderRegistration]
+      def oauth_provider(name, **resolvers)
+        registration = ProviderRegistration.new(name, **resolvers)
+        oauth_providers.reject! do |provider|
+          provider.name == registration.name
+        end
+        oauth_providers << registration
+        registration
       end
     end
   end
