@@ -107,6 +107,49 @@ class VertisoAuthenticationOmniauthDeveloperStrategyTest < ActiveSupport::TestCa
     end
   end
 
+  test "fails closed when the resolver returns a persisted object of the wrong class" do
+    wrong_record = Vertiso::Authentication::OauthProvider.create!(
+      name: "developer",
+      display_name: "Developer"
+    )
+    @configuration.oauth_provider(
+      :developer,
+      principal_resolver: -> { wrong_record }
+    )
+    principal_count = User.count
+
+    with_rails_environment("development") do
+      response = session_request(build_middleware).post("/auth/developer")
+
+      assert_equal 302, response.status
+      assert_includes response.location, "developer_principal_missing"
+      assert_equal principal_count, User.count
+      assert_nil @callback_auth
+    end
+  end
+
+  test "fails closed when the resolver returns an unsaved principal" do
+    @configuration.oauth_provider(
+      :developer,
+      principal_resolver: lambda {
+        User.new(
+          email: "unsaved@example.com",
+          user_name: "unsaved"
+        )
+      }
+    )
+    principal_count = User.count
+
+    with_rails_environment("development") do
+      response = session_request(build_middleware).post("/auth/developer")
+
+      assert_equal 302, response.status
+      assert_includes response.location, "developer_principal_missing"
+      assert_equal principal_count, User.count
+      assert_nil @callback_auth
+    end
+  end
+
   test "refuses to execute a previously built developer strategy outside development" do
     @configuration.oauth_provider(
       :developer,

@@ -47,30 +47,24 @@ class VertisoAuthenticationProviderRegistrationTest < ActiveSupport::TestCase
     )
   end
 
-  test "fails clearly when client id configuration is absent" do
+  test "leaves known-provider validation to middleware construction" do
     registration = Vertiso::Authentication::ProviderRegistration.new(
       :google_oauth2,
       client_secret: "client-secret"
     )
-
-    error = assert_raises ArgumentError do
-      registration.options
-    end
-
-    assert_equal "OAuth provider google_oauth2 requires client_id", error.message
-  end
-
-  test "fails clearly when client secret configuration is absent" do
-    registration = Vertiso::Authentication::ProviderRegistration.new(
+    second_registration = Vertiso::Authentication::ProviderRegistration.new(
       :github,
       client_id: "client-id"
     )
 
-    error = assert_raises ArgumentError do
+    assert_equal(
+      { client_secret: "client-secret" },
       registration.options
-    end
-
-    assert_equal "OAuth provider github requires client_secret", error.message
+    )
+    assert_equal(
+      { client_id: "client-id" },
+      second_registration.options
+    )
   end
 
   test "does not persist or inspect resolved provider secrets" do

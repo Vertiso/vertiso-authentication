@@ -92,7 +92,10 @@ module Vertiso
                       else
                         principal_resolver
                       end
-          return unless principal&.persisted?
+          return unless principal.is_a?(
+            authentication_configuration.principal_class
+          )
+          return unless principal.persisted?
 
           @developer_principal = principal
         end

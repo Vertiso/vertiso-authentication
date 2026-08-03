@@ -19,15 +19,10 @@ module Vertiso
       # Resolves provider values for middleware construction.
       #
       # @return [Hash]
-      # @raise [ArgumentError] when required strategy credentials are absent
       def options
-        resolved_options = resolvers.transform_values do |value|
+        resolvers.transform_values do |value|
           value.respond_to?(:call) ? value.call : value
         end
-
-        require_option!(resolved_options, :client_id)
-        require_option!(resolved_options, :client_secret)
-        resolved_options
       end
 
       # Returns a representation that never resolves or displays host values.
@@ -49,21 +44,16 @@ module Vertiso
         resolvers[key]
       end
 
+      # Returns configured option names without resolving their values.
+      #
+      # @return [Array<Symbol>]
+      def option_keys
+        resolvers.keys
+      end
+
       private
 
       attr_reader :resolvers
-
-      # Raises when a required provider option is absent.
-      #
-      # @param resolved_options [Hash]
-      # @param key [Symbol]
-      # @return [void]
-      # @raise [ArgumentError]
-      def require_option!(resolved_options, key)
-        return if resolved_options.key?(key) && !resolved_options[key].nil?
-
-        raise ArgumentError, "OAuth provider #{name} requires #{key}"
-      end
     end
   end
 end

@@ -4,6 +4,39 @@ require "test_helper"
 require "rack/mock"
 require "rack/session/cookie"
 
+module OmniAuth
+  module Strategies
+    # Real non-OAuth2 strategy with one declared argument and option values.
+    class TaskEightOneArgument
+      include OmniAuth::Strategy
+
+      args [:client_id]
+      option :name, "task_eight_one_argument"
+      option :client_secret
+      option :api_token
+    end
+
+    # Real non-OAuth2 strategy that rejects its resolved configuration.
+    class TaskEightExploding
+      include OmniAuth::Strategy
+
+      option :name, "task_eight_exploding"
+      option :api_token
+
+      # Raises an error containing the configured value to test redaction.
+      #
+      # @param app [#call]
+      # @param arguments [Array]
+      # @param options [Hash]
+      # @raise [ArgumentError]
+      def initialize(app, *arguments, **options)
+        super
+        raise ArgumentError, "rejected #{self.options.api_token}"
+      end
+    end
+  end
+end
+
 class VertisoAuthenticationOmniauthMiddlewareTest < ActiveSupport::TestCase
   setup do
     @configuration = Vertiso::Authentication::Configuration.new
@@ -105,7 +138,101 @@ class VertisoAuthenticationOmniauthMiddlewareTest < ActiveSupport::TestCase
       build_middleware(configuration:)
     end
 
-    assert_equal "OAuth provider apple requires team_id", error.message
+    assert_equal(
+      "OAuth provider apple requires nonblank team_id",
+      error.message
+    )
+  end
+
+  test "passes arbitrary provider values through a non-OAuth2 strategy option contract" do
+    configuration = Vertiso::Authentication::Configuration.new
+    secret = "custom-resolved-secret"
+    configuration.oauth_provider(
+      :task_eight_one_argument,
+      client_id: "custom-client-id",
+      client_secret: -> { secret },
+      api_token: "custom-api-token"
+    )
+
+    strategy = strategy_for(
+      build_middleware(configuration:),
+      :task_eight_one_argument
+    )
+
+    assert_equal "custom-client-id", strategy.options.client_id
+    assert_equal secret, strategy.options.client_secret
+    assert_equal "custom-api-token", strategy.options.api_token
+  end
+
+  test "redacts arbitrary strategy construction errors and removes their cause" do
+    configuration = Vertiso::Authentication::Configuration.new
+    secret = "custom-error-secret"
+    configuration.oauth_provider(
+      :task_eight_exploding,
+      api_token: -> { secret }
+    )
+
+    error = assert_raises(
+      Vertiso::Authentication::Omniauth::Middleware::ProviderConfigurationError
+    ) do
+      build_middleware(configuration:)
+    end
+
+    assert_includes error.message, "task_eight_exploding"
+    assert_includes error.message, "api_token"
+    refute_includes error.message, secret
+    refute_includes error.full_message, secret
+    refute_includes error.inspect, secret
+    assert_nil error.cause
+  end
+
+  test "requires nonblank Google and GitHub OAuth2 credentials at middleware build" do
+    cases = [
+      [:google_oauth2, :client_id, nil],
+      [:google_oauth2, :client_id, " "],
+      [:google_oauth2, :client_secret, nil],
+      [:google_oauth2, :client_secret, ""],
+      [:github, :client_id, nil],
+      [:github, :client_id, " "],
+      [:github, :client_secret, nil],
+      [:github, :client_secret, ""]
+    ]
+
+    cases.each do |provider_name, missing_key, missing_value|
+      assert_required_oauth2_value(
+        provider_name:,
+        missing_key:,
+        missing_value:
+      )
+    end
+  end
+
+  test "requires nonblank Apple signing values but permits its blank positional secret" do
+    %i[client_id team_id key_id pem].each do |missing_key|
+      configuration = apple_configuration(
+        missing_key:,
+        missing_value: " "
+      )
+
+      error = assert_raises(
+        Vertiso::Authentication::Omniauth::Middleware::ProviderConfigurationError
+      ) do
+        build_middleware(configuration:)
+      end
+
+      assert_equal(
+        "OAuth provider apple requires nonblank #{missing_key}",
+        error.message
+      )
+      assert_nil error.cause
+    end
+
+    strategy = strategy_for(
+      build_middleware(configuration: apple_configuration),
+      :apple
+    )
+
+    assert_equal "", strategy.options.client_secret
   end
 
   private
@@ -140,5 +267,56 @@ class VertisoAuthenticationOmniauthMiddlewareTest < ActiveSupport::TestCase
     end
 
     flunk "missing #{name} strategy"
+  end
+
+  # Asserts a known OAuth2 provider rejects one absent or blank credential.
+  #
+  # @param provider_name [Symbol]
+  # @param missing_key [Symbol]
+  # @param missing_value [Object]
+  # @return [void]
+  def assert_required_oauth2_value(
+    provider_name:,
+    missing_key:,
+    missing_value:
+  )
+    values = {
+      client_id: "#{provider_name}-client-id",
+      client_secret: "#{provider_name}-client-secret"
+    }
+    values[missing_key] = missing_value
+    configuration = Vertiso::Authentication::Configuration.new
+    configuration.oauth_provider(provider_name, **values)
+
+    error = assert_raises(
+      Vertiso::Authentication::Omniauth::Middleware::ProviderConfigurationError
+    ) do
+      build_middleware(configuration:)
+    end
+
+    assert_equal(
+      "OAuth provider #{provider_name} requires nonblank #{missing_key}",
+      error.message
+    )
+    assert_nil error.cause
+  end
+
+  # Builds an Apple registration with one optionally invalid signing value.
+  #
+  # @param missing_key [Symbol, nil]
+  # @param missing_value [Object]
+  # @return [Vertiso::Authentication::Configuration]
+  def apple_configuration(missing_key: nil, missing_value: nil)
+    values = {
+      client_id: "apple-client-id",
+      client_secret: "",
+      team_id: "apple-team-id",
+      key_id: "apple-key-id",
+      pem: "apple-private-key"
+    }
+    values[missing_key] = missing_value if missing_key
+    configuration = Vertiso::Authentication::Configuration.new
+    configuration.oauth_provider(:apple, **values)
+    configuration
   end
 end
