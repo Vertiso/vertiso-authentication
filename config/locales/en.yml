@@ -1,0 +1,20 @@
+en:
+  vertiso:
+    authentication:
+      registrations:
+        new:
+          email: "Email"
+          password: "Password"
+          password_confirmation: "Password confirmation"
+          submit: "Create account"
+          title: "Create account"
+          user_name: "User name"
+      sessions:
+        invalid_credentials: "Invalid login or password."
+        new:
+          login: "Email or user name"
+          password: "Password"
+          submit: "Sign in"
+          title: "Sign in"
+        signed_in: "Signed in."
+        signed_out: "Signed out."

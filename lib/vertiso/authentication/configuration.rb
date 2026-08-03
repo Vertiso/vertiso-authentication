@@ -8,6 +8,7 @@ module Vertiso
                     :email_attribute,
                     :user_name_attribute,
                     :email_confirmed_at_attribute,
+                    :remember_cookie_key,
                     :remember_token_lifetime,
                     :email_confirmation_lifetime,
                     :password_reset_lifetime,
@@ -27,6 +28,7 @@ module Vertiso
         @email_attribute = :email
         @user_name_attribute = :user_name
         @email_confirmed_at_attribute = :email_verified_at
+        @remember_cookie_key = :remember_token
         @remember_token_lifetime = 30.days
         @email_confirmation_lifetime = 24.hours
         @password_reset_lifetime = 1.hour

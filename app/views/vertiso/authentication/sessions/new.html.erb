@@ -1,0 +1,17 @@
+<%# Copyright © 2026. Copyright Vertiso Corporation, all rights reserved. %>
+
+<h1>
+  <%= t(".title") %>
+</h1>
+
+<%= form_with scope: :session, url: session_path do |form| %>
+  <div>
+    <%= form.label :login, t(".login") %>
+    <%= form.text_field :login, autocomplete: "username", required: true %>
+  </div>
+  <div>
+    <%= form.label :password, t(".password") %>
+    <%= form.password_field :password, autocomplete: "current-password", required: true %>
+  </div>
+  <%= form.submit t(".submit") %>
+<% end %>
