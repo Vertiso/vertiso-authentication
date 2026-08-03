@@ -39,6 +39,14 @@ module Vertiso
       # @return [void]
       def create_by_oauth
         auth = request.env["omniauth.auth"]
+        if auth&.provider.to_s == "developer" && !Rails.env.development?
+          redirect_to login_path,
+                      alert: t(
+                        "vertiso.authentication.sessions.oauth_unavailable"
+                      )
+          return
+        end
+
         provider = OauthProvider.find_by(name: auth.provider) if auth.present?
 
         unless provider&.active?
@@ -297,10 +305,23 @@ module Vertiso
       # @return [Vertiso::Authentication::UserOauthAccount]
       def create_oauth_account_idempotently(principal:, auth:, provider:)
         create_oauth_account(principal:, auth:, provider:)
-      rescue ActiveRecord::RecordNotUnique
-        UserOauthAccount.find_by!(
-          oauth_provider: provider,
-          provider_uid: auth.uid
+      rescue ActiveRecord::RecordInvalid => error
+        raise unless oauth_identity_uniqueness_failure?(
+          error:,
+          provider:,
+          uid: auth.uid
+        )
+
+        oauth_identity_winner_or_raise(
+          error:,
+          provider:,
+          uid: auth.uid
+        )
+      rescue ActiveRecord::RecordNotUnique => error
+        oauth_identity_winner_or_raise(
+          error:,
+          provider:,
+          uid: auth.uid
         )
       end
 
@@ -397,14 +418,27 @@ module Vertiso
           create_oauth_account(principal:, auth:, provider:)
         end
         principal
-      rescue ActiveRecord::RecordInvalid => e
-        copy_oauth_creation_errors(principal:, record: e.record)
+      rescue ActiveRecord::RecordInvalid => error
+        if oauth_identity_uniqueness_failure?(
+          error:,
+          provider:,
+          uid: auth.uid
+        )
+          return oauth_identity_winner_or_raise(
+            error:,
+            provider:,
+            uid: auth.uid
+          ).principal
+        end
+
+        copy_oauth_creation_errors(principal:, record: error.record)
         principal
-      rescue ActiveRecord::RecordNotUnique
-        UserOauthAccount.find_by(
-          oauth_provider: provider,
-          provider_uid: auth.uid
-        )&.principal || principal
+      rescue ActiveRecord::RecordNotUnique => error
+        oauth_identity_winner_or_raise(
+          error:,
+          provider:,
+          uid: auth.uid
+        ).principal
       end
 
       # Builds the host principal's allowlisted OAuth attributes.
@@ -415,10 +449,19 @@ module Vertiso
       # @return [Hash]
       def oauth_principal_attributes(auth:, email:, trusted:)
         password = "Aa1!#{SecureRandom.alphanumeric(18)}"
-        host_attributes = authentication_configuration
+        attributes_hook = authentication_configuration
                           .oauth_principal_attributes
-                          .call(auth:)
-                          .to_h
+        unless attributes_hook.respond_to?(:call)
+          raise TypeError,
+                "oauth_principal_attributes must be callable"
+        end
+
+        host_attributes = attributes_hook.call(auth:)
+        unless host_attributes.is_a?(Hash)
+          raise TypeError,
+                "oauth_principal_attributes must return a Hash"
+        end
+
         host_attributes.merge(
           authentication_configuration.email_attribute => email,
           authentication_configuration.user_name_attribute => oauth_user_name(
@@ -443,12 +486,27 @@ module Vertiso
                     email.to_s.split("@").first.presence ||
                     "oauth-user"
         allocator = authentication_configuration.oauth_user_name_allocator
-        return candidate.to_s.strip.downcase unless allocator
+        unless allocator.respond_to?(:call)
+          raise TypeError,
+                "oauth_user_name_allocator must be callable"
+        end
 
-        allocator.call(
+        allocated = allocator.call(
           principal_class:,
           candidate:
         )
+        unless allocated.is_a?(String)
+          raise TypeError,
+                "oauth_user_name_allocator must return a String"
+        end
+
+        normalized = allocated.strip.downcase
+        if normalized.blank?
+          raise ArgumentError,
+                "oauth_user_name_allocator must return a nonblank String"
+        end
+
+        normalized
       end
 
       # Copies second-write validation failures onto the returned principal.
@@ -462,6 +520,40 @@ module Vertiso
         record.errors.full_messages.each do |message|
           principal.errors.add(:base, message)
         end
+      end
+
+      # Returns whether a validation failure represents this identity race.
+      #
+      # @param error [ActiveRecord::RecordInvalid]
+      # @param provider [Vertiso::Authentication::OauthProvider]
+      # @param uid [String]
+      # @return [Boolean]
+      def oauth_identity_uniqueness_failure?(error:, provider:, uid:)
+        record = error.record
+        return false unless record.is_a?(UserOauthAccount)
+        return false unless record.oauth_provider_id == provider.id
+        return false unless record.provider_uid == uid
+
+        record.errors.details.fetch(:provider_uid, []).any? do |detail|
+          detail[:error] == :taken
+        end
+      end
+
+      # Resolves the exact committed provider-identity winner.
+      #
+      # @param error [ActiveRecord::ActiveRecordError]
+      # @param provider [Vertiso::Authentication::OauthProvider]
+      # @param uid [String]
+      # @return [Vertiso::Authentication::UserOauthAccount]
+      # @raise [ActiveRecord::ActiveRecordError] when no exact winner exists
+      def oauth_identity_winner_or_raise(error:, provider:, uid:)
+        winner = UserOauthAccount.find_by(
+          oauth_provider: provider,
+          provider_uid: uid
+        )
+        raise error unless winner
+
+        winner
       end
 
       # Stashes the callback fields needed for a delayed email completion.

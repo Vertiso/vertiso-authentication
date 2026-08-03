@@ -65,6 +65,62 @@ class VertisoAuthenticationOauthSessionsControllerTest < ActionDispatch::Integra
     )
   end
 
+  test "developer callback is rejected outside development without mutations" do
+    developer = Vertiso::Authentication::OauthProvider.create!(
+      name: "developer",
+      display_name: "Developer",
+      trusts_email: true
+    )
+    owner = create_principal(
+      email: "developer@example.com",
+      user_name: "developer"
+    )
+    account = owner.authentication_oauth_accounts.create!(
+      oauth_provider: developer,
+      provider_uid: "developer-#{owner.id}",
+      email: "original@example.com",
+      name: "Original Developer",
+      user_info: {
+        "source" => "original"
+      },
+      user_credentials: {
+        "token" => "original-token"
+      }
+    )
+    auth = oauth_auth(
+      provider: "developer",
+      uid: "developer-#{owner.id}",
+      email: owner.email,
+      name: "Mutated Developer",
+      token: "mutated-token"
+    )
+
+    with_rails_environment("production") do
+      assert_no_difference(
+        [
+          -> { User.count },
+          -> { Vertiso::Authentication::UserOauthAccount.count },
+          -> { Vertiso::Authentication::AuthenticationSession.count }
+        ]
+      ) do
+        get "/authentication/auth/developer/callback",
+            env: { "omniauth.auth" => auth }
+      end
+    end
+
+    assert_redirected_to LOGIN_PATH
+    assert_equal(
+      I18n.t("vertiso.authentication.sessions.oauth_unavailable"),
+      request.flash[:alert]
+    )
+    assert_nil current_principal_id
+    assert_equal "original@example.com", account.reload.email
+    assert_equal "Original Developer", account.name
+    assert_equal({ "source" => "original" }, account.user_info)
+    assert_equal({ "token" => "original-token" }, account.user_credentials)
+    assert_nil account.last_used_at
+  end
+
   test "existing identity signs in its owner and replaces callback metadata" do
     owner = create_principal(
       email: "owner@example.com",
@@ -235,6 +291,41 @@ class VertisoAuthenticationOauthSessionsControllerTest < ActionDispatch::Integra
     )
   end
 
+  test "trusted linked-email collision links and signs in the linked principal" do
+    existing = create_principal(
+      email: "canonical@example.com",
+      user_name: "existing"
+    )
+    existing.authentication_oauth_accounts.create!(
+      oauth_provider: @provider,
+      provider_uid: "existing-linked-email",
+      email: "linked@example.com"
+    )
+    auth = oauth_auth(
+      uid: "trusted-linked-collision",
+      email: " Linked@Example.com "
+    )
+
+    assert_no_difference(-> { User.count }) do
+      assert_difference(
+        -> { Vertiso::Authentication::UserOauthAccount.count },
+        1
+      ) do
+        get CALLBACK_PATH, env: { "omniauth.auth" => auth }
+      end
+    end
+
+    assert_redirected_to oauth_destination(existing)
+    assert_equal existing.id, current_principal_id
+    assert_equal(
+      existing,
+      Vertiso::Authentication::UserOauthAccount.find_by!(
+        oauth_provider: @provider,
+        provider_uid: "trusted-linked-collision"
+      ).principal
+    )
+  end
+
   test "untrusted email collision does not link or sign in the existing principal" do
     github = create_github_provider
     existing = create_principal(
@@ -255,8 +346,55 @@ class VertisoAuthenticationOauthSessionsControllerTest < ActionDispatch::Integra
     )
 
     assert_no_difference(
-      -> { User.count },
-      -> { Vertiso::Authentication::UserOauthAccount.count }
+      [
+        -> { User.count },
+        -> { Vertiso::Authentication::UserOauthAccount.count }
+      ]
+    ) do
+      get "/authentication/auth/github/callback",
+          env: { "omniauth.auth" => auth }
+    end
+
+    assert_redirected_to LOGIN_PATH
+    assert_equal(
+      I18n.t(
+        "vertiso.authentication.sessions.oauth_email_collision_untrusted",
+        provider: github.display_name
+      ),
+      request.flash[:alert]
+    )
+    assert_nil current_principal_id
+  end
+
+  test "untrusted linked-email collision does not link or create a principal" do
+    github = create_github_provider
+    existing = create_principal(
+      email: "canonical@example.com",
+      user_name: "existing"
+    )
+    existing.authentication_oauth_accounts.create!(
+      oauth_provider: @provider,
+      provider_uid: "existing-untrusted-linked-email",
+      email: "linked@example.com"
+    )
+    auth = oauth_auth(
+      provider: "github",
+      uid: "untrusted-linked-collision",
+      email: "linked@example.com",
+      all_emails: [
+        {
+          "email" => "linked@example.com",
+          "verified" => false,
+          "primary" => true
+        }
+      ]
+    )
+
+    assert_no_difference(
+      [
+        -> { User.count },
+        -> { Vertiso::Authentication::UserOauthAccount.count }
+      ]
     ) do
       get "/authentication/auth/github/callback",
           env: { "omniauth.auth" => auth }
@@ -300,6 +438,79 @@ class VertisoAuthenticationOauthSessionsControllerTest < ActionDispatch::Integra
     end
   end
 
+  test "OAuth principal attribute hook rejects missing and non-hash contracts atomically" do
+    invalid_hooks = {
+      "missing" => nil,
+      "noncallable" => "not-callable",
+      "nil result" => ->(auth:) { nil },
+      "non-hash result" => ->(auth:) { auth.info.name },
+      "raising" => lambda do |auth:|
+        raise RuntimeError, "attribute hook failed for #{auth.uid}"
+      end
+    }
+
+    invalid_hooks.each_with_index do |(label, hook), index|
+      Vertiso::Authentication.configuration.oauth_principal_attributes = hook
+
+      assert_no_difference(
+        [
+          -> { User.count },
+          -> { Vertiso::Authentication::UserOauthAccount.count }
+        ],
+        label
+      ) do
+        get CALLBACK_PATH,
+            env: {
+              "omniauth.auth" => oauth_auth(
+                uid: "invalid-attributes-#{index}",
+                email: "invalid-attributes-#{index}@example.com"
+              )
+            }
+      end
+
+      assert_response :internal_server_error, label
+    end
+  end
+
+  test "OAuth user-name allocator rejects missing invalid and raising contracts atomically" do
+    invalid_allocators = {
+      "missing" => nil,
+      "noncallable" => "not-callable",
+      "nil result" => ->(principal_class:, candidate:) { nil },
+      "non-string result" => lambda do |principal_class:, candidate:|
+        [principal_class.name, candidate]
+      end,
+      "blank result" => ->(principal_class:, candidate:) { "  " },
+      "raising" => lambda do |principal_class:, candidate:|
+        raise RuntimeError,
+              "allocator failed for #{principal_class.name}:#{candidate}"
+      end
+    }
+
+    invalid_allocators.each_with_index do |(label, allocator), index|
+      Vertiso::Authentication.configuration.oauth_user_name_allocator =
+        allocator
+
+      assert_no_difference(
+        [
+          -> { User.count },
+          -> { Vertiso::Authentication::UserOauthAccount.count }
+        ],
+        label
+      ) do
+        get CALLBACK_PATH,
+            env: {
+              "omniauth.auth" => oauth_auth(
+                uid: "invalid-allocator-#{index}",
+                email: "invalid-allocator-#{index}@example.com"
+              )
+            }
+      end
+
+      assert_response :internal_server_error, label
+    end
+  end
+
   test "untrusted unique email creates an unconfirmed principal" do
     create_github_provider
     auth = oauth_auth(
@@ -335,8 +546,10 @@ class VertisoAuthenticationOauthSessionsControllerTest < ActionDispatch::Integra
     create_github_provider
 
     assert_no_difference(
-      -> { User.count },
-      -> { Vertiso::Authentication::UserOauthAccount.count }
+      [
+        -> { User.count },
+        -> { Vertiso::Authentication::UserOauthAccount.count }
+      ]
     ) do
       get "/authentication/auth/github/callback",
           env: {
@@ -394,8 +607,10 @@ class VertisoAuthenticationOauthSessionsControllerTest < ActionDispatch::Integra
     )
 
     assert_no_difference(
-      -> { User.count },
-      -> { Vertiso::Authentication::UserOauthAccount.count }
+      [
+        -> { User.count },
+        -> { Vertiso::Authentication::UserOauthAccount.count }
+      ]
     ) do
       get "/authentication/auth/github/callback",
           env: { "omniauth.auth" => auth }
@@ -482,13 +697,57 @@ class VertisoAuthenticationOauthSessionsControllerTest < ActionDispatch::Integra
         }
 
     assert_no_difference(
-      -> { User.count },
-      -> { Vertiso::Authentication::UserOauthAccount.count }
+      [
+        -> { User.count },
+        -> { Vertiso::Authentication::UserOauthAccount.count }
+      ]
     ) do
       post COMPLETE_EMAIL_PATH,
            params: {
              oauth_email: {
                email: existing.email
+             }
+           }
+    end
+
+    assert_redirected_to LOGIN_PATH
+    assert_equal(
+      I18n.t(
+        "vertiso.authentication.sessions.oauth_email_collision_untrusted",
+        provider: @provider.display_name
+      ),
+      request.flash[:alert]
+    )
+  end
+
+  test "typed linked-email collision is rejected without creating records" do
+    existing = create_principal(
+      email: "canonical@example.com",
+      user_name: "existing"
+    )
+    existing.authentication_oauth_accounts.create!(
+      oauth_provider: @provider,
+      provider_uid: "existing-typed-linked-email",
+      email: "linked@example.com"
+    )
+    get CALLBACK_PATH,
+        env: {
+          "omniauth.auth" => oauth_auth(
+            uid: "typed-linked-collision",
+            email: nil
+          )
+        }
+
+    assert_no_difference(
+      [
+        -> { User.count },
+        -> { Vertiso::Authentication::UserOauthAccount.count }
+      ]
+    ) do
+      post COMPLETE_EMAIL_PATH,
+           params: {
+             oauth_email: {
+               email: "linked@example.com"
              }
            }
     end
@@ -513,8 +772,10 @@ class VertisoAuthenticationOauthSessionsControllerTest < ActionDispatch::Integra
         }
 
     assert_no_difference(
-      -> { User.count },
-      -> { Vertiso::Authentication::UserOauthAccount.count }
+      [
+        -> { User.count },
+        -> { Vertiso::Authentication::UserOauthAccount.count }
+      ]
     ) do
       post COMPLETE_EMAIL_PATH,
            params: {
@@ -529,6 +790,67 @@ class VertisoAuthenticationOauthSessionsControllerTest < ActionDispatch::Integra
       I18n.t("vertiso.authentication.sessions.email_invalid"),
       request.flash[:alert]
     )
+  end
+
+  test "database identity collision resolves the exact committed winner" do
+    winner = create_principal(
+      email: "winner@example.com",
+      user_name: "winner"
+    )
+    target_uid = "unique-index-winner"
+    uniqueness_validator = oauth_identity_uniqueness_validator
+    inserted = false
+    Vertiso::Authentication::UserOauthAccount.skip_callback(
+      :validate,
+      :before,
+      uniqueness_validator
+    )
+    Vertiso::Authentication.configuration.oauth_principal_attributes =
+      lambda do |auth:|
+        unless inserted
+          winner.authentication_oauth_accounts.create!(
+            oauth_provider: @provider,
+            provider_uid: target_uid,
+            email: winner.email
+          )
+          inserted = true
+        end
+
+        {
+          name: auth.info.name.to_s.presence || "OAuth User"
+        }
+      end
+
+    assert_no_difference(-> { User.count }) do
+      assert_difference(
+        -> { Vertiso::Authentication::UserOauthAccount.count },
+        1
+      ) do
+        get CALLBACK_PATH,
+            env: {
+              "omniauth.auth" => oauth_auth(
+                uid: target_uid,
+                email: "new-callback@example.com"
+              )
+            }
+      end
+    end
+
+    account = Vertiso::Authentication::UserOauthAccount.find_by!(
+      oauth_provider: @provider,
+      provider_uid: target_uid
+    )
+    assert_equal winner, account.principal
+    assert_redirected_to oauth_destination(winner)
+    assert_equal winner.id, current_principal_id
+  ensure
+    if uniqueness_validator
+      Vertiso::Authentication::UserOauthAccount.set_callback(
+        :validate,
+        :before,
+        uniqueness_validator
+      )
+    end
   end
 
   test "principal and linked account creation are atomic" do
@@ -547,8 +869,10 @@ class VertisoAuthenticationOauthSessionsControllerTest < ActionDispatch::Integra
     Thread.current[:reject_task_nine_oauth_account] = true
 
     assert_no_difference(
-      -> { User.count },
-      -> { Vertiso::Authentication::UserOauthAccount.count }
+      [
+        -> { User.count },
+        -> { Vertiso::Authentication::UserOauthAccount.count }
+      ]
     ) do
       get CALLBACK_PATH,
           env: {
@@ -671,12 +995,44 @@ class VertisoAuthenticationOauthSessionsControllerTest < ActionDispatch::Integra
     response.parsed_body["principal_id"]
   end
 
+  # Returns the provider-identity uniqueness validator callback.
+  #
+  # @return [ActiveRecord::Validations::UniquenessValidator]
+  def oauth_identity_uniqueness_validator
+    Vertiso::Authentication::UserOauthAccount.validators_on(
+      :provider_uid
+    ).find do |validator|
+      validator.is_a?(
+        ActiveRecord::Validations::UniquenessValidator
+      )
+    end
+  end
+
   # Returns the configured host destination for a principal.
   #
   # @param principal [User]
   # @return [String]
   def oauth_destination(principal)
     "/signed-in?principal_id=#{principal.id}&source=oauth"
+  end
+
+  # Runs a block under an exact Rails environment inquiry.
+  #
+  # @param name [String]
+  # @yieldreturn [Object]
+  # @return [Object]
+  def with_rails_environment(name, &)
+    environment = ActiveSupport::EnvironmentInquirer.new(name)
+    environment_was_defined = Rails.instance_variable_defined?(:@_env)
+    original_environment = Rails.instance_variable_get(:@_env)
+    Rails.instance_variable_set(:@_env, environment)
+    yield
+  ensure
+    if environment_was_defined
+      Rails.instance_variable_set(:@_env, original_environment)
+    else
+      Rails.remove_instance_variable(:@_env)
+    end
   end
 
   # Builds a complete production-shaped OmniAuth callback hash.

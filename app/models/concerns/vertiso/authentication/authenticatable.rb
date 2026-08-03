@@ -68,7 +68,14 @@ module Vertiso
         # @param email [String]
         # @return [ApplicationRecord, nil]
         def find_email(email:)
-          find_by(configured_email_attribute => normalize_email(email))
+          normalized_email = normalize_email(email)
+          return nil if normalized_email.blank?
+
+          find_by(configured_email_attribute => normalized_email) ||
+            Vertiso::Authentication::UserOauthAccount.find_by(
+              email: normalized_email,
+              principal_type: polymorphic_name
+            )&.principal
         end
 
         # Finds a principal by its configured email address or user name.
