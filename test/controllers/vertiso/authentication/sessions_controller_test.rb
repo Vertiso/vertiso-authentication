@@ -17,6 +17,24 @@ class VertisoAuthenticationSessionsControllerTest < ActionDispatch::IntegrationT
     Vertiso::Authentication.reset_configuration!
   end
 
+  test "login route renders the extracted authentication components" do
+    Vertiso::Authentication::OauthProvider.create!(
+      name: "google_oauth2",
+      display_name: "Google",
+      active: true,
+      trusts_email: true
+    )
+
+    get LOGIN_PATH
+
+    assert_response :success
+    assert_select "main[aria-labelledby='vertiso-auth-title']"
+    assert_select "form[action='/authentication/login']"
+    assert_select "form[action='/auth/google_oauth2']"
+    assert_select "input[autocomplete='username'][required]"
+    assert_select "input[autocomplete='current-password'][required]"
+  end
+
   test "logs in by normalized email" do
     post LOGIN_PATH, params: {
       session: {

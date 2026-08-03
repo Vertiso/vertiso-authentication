@@ -1,0 +1,72 @@
+/* Copyright © 2026. Copyright Vertiso Corporation, all rights reserved. */
+
+@layer components {
+  .vertiso-auth-shell {
+    @apply flex items-center justify-center px-4 py-16;
+  }
+
+  .vertiso-auth-shell__container {
+    @apply w-full max-w-sm;
+  }
+
+  .vertiso-auth-shell__home {
+    @apply mx-auto mb-6 flex h-10 w-10 items-center justify-center font-bold;
+  }
+
+  .vertiso-auth-shell__header {
+    @apply mb-8 text-center;
+  }
+
+  .vertiso-auth-shell__title {
+    @apply text-3xl font-bold tracking-tight;
+  }
+
+  .vertiso-auth-shell__subtitle {
+    @apply mt-2 text-sm;
+  }
+
+  .vertiso-auth-form,
+  .vertiso-auth-fields {
+    @apply space-y-4;
+  }
+
+  .vertiso-auth-field__label {
+    @apply mb-1.5 block text-sm font-medium;
+  }
+
+  .vertiso-auth-button {
+    @apply inline-flex w-full items-center justify-center font-medium;
+  }
+
+  .vertiso-auth-errors {
+    @apply mb-4 px-4 py-3 text-sm;
+  }
+
+  .vertiso-auth-form__aside {
+    @apply text-right text-sm;
+  }
+
+  .vertiso-auth-form__footer {
+    @apply mt-6 text-center text-sm;
+  }
+
+  .vertiso-auth-separator {
+    @apply my-6 text-center text-xs;
+  }
+
+  .vertiso-auth-providers {
+    @apply space-y-2;
+  }
+
+  .vertiso-auth-linked-identities {
+    @apply mt-6 space-y-3;
+  }
+
+  .vertiso-auth-linked-identities ul {
+    @apply space-y-2;
+  }
+
+  .vertiso-auth-linked-identities li {
+    @apply flex items-center justify-between gap-3 px-4 py-3;
+  }
+}

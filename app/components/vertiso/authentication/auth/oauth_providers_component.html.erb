@@ -1,0 +1,74 @@
+<%# Copyright © 2026. Copyright Vertiso Corporation, all rights reserved. %>
+
+<div class="vertiso-auth-providers"
+     aria-label="<%= t("vertiso.authentication.components.oauth_providers.label") %>">
+  <% providers.each do |provider| %>
+    <%= button_to oauth_path.call(provider.name),
+                  method: :post,
+                  form: {
+                    data: {
+                      turbo: false
+                    }
+                  },
+                  class: "vertiso-auth-button vertiso-auth-button--provider #{theme.button}" do %>
+      <span>
+        <%= provider_label(provider) %>
+      </span>
+    <% end %>
+  <% end %>
+
+  <% if include_developer %>
+    <%= button_to oauth_path.call(:developer),
+                  method: :post,
+                  form: {
+                    data: {
+                      turbo: false
+                    }
+                  },
+                  class: "vertiso-auth-button vertiso-auth-button--provider #{theme.button}" do %>
+      <span>
+        <%= t("vertiso.authentication.components.oauth_providers.continue_with_developer") %>
+      </span>
+    <% end %>
+  <% end %>
+</div>
+
+<% unless linked_accounts.nil? %>
+  <section class="vertiso-auth-linked-identities"
+           aria-labelledby="vertiso-auth-linked-identities-title">
+    <h2 id="vertiso-auth-linked-identities-title"
+        class="<%= theme.foreground %>">
+      <%= t("vertiso.authentication.components.oauth_providers.linked_accounts") %>
+    </h2>
+    <% if linked_accounts.empty? %>
+      <p class="<%= theme.muted %>">
+        <%= t("vertiso.authentication.components.oauth_providers.none_linked") %>
+      </p>
+    <% else %>
+      <ul>
+        <% linked_accounts.each do |account| %>
+          <li id="<%= dom_id(account) %>"
+              class="<%= theme.border %> <%= theme.radius %>">
+            <span class="<%= theme.foreground %>">
+              <%= account.oauth_provider.display_name %>
+            </span>
+            <span class="<%= theme.muted %>">
+              <%= account.email.presence || account.name %>
+            </span>
+            <%= button_to unlink_path.call(account),
+                          method: :delete,
+                          aria: {
+                            label: t(
+                              "vertiso.authentication.components.oauth_providers.unlink",
+                              provider: account.oauth_provider.display_name
+                            )
+                          },
+                          class: "vertiso-auth-button vertiso-auth-button--danger #{theme.danger}" do %>
+              <%= t("vertiso.authentication.components.oauth_providers.unlink_action") %>
+            <% end %>
+          </li>
+        <% end %>
+      </ul>
+    <% end %>
+  </section>
+<% end %>

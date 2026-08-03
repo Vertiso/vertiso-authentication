@@ -1,0 +1,19 @@
+# Copyright © <%= Time.current.year %>. Copyright Vertiso Corporation, all rights reserved.
+
+class CreateVertisoAuthenticationOauthProviders < ActiveRecord::Migration[8.1]
+  def change
+    create_table :vertiso_authentication_oauth_providers do |table|
+      table.string :name, null: false
+      table.string :display_name, null: false
+      table.boolean :active, default: true, null: false
+      table.json :configuration, default: {}, null: false
+      table.boolean :trusts_email, default: false, null: false
+      table.timestamps
+    end
+
+    add_index :vertiso_authentication_oauth_providers,
+              :name,
+              unique: true,
+              name: "idx_vertiso_auth_oauth_providers_name"
+  end
+end

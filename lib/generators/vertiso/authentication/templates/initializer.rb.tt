@@ -1,0 +1,30 @@
+# Copyright © <%= Time.current.year %>. Copyright Vertiso Corporation, all rights reserved.
+
+Vertiso::Authentication.configure do |config|
+  config.principal_class_name = "<%= options[:principal] %>"
+  config.email_attribute = :<%= options[:email_attribute] %>
+  config.user_name_attribute = :<%= options[:user_name_attribute] %>
+  config.email_confirmed_at_attribute = :<%= options[:email_confirmed_at_attribute] %>
+  config.theme = Vertiso::Authentication::Theme.default
+
+  # Provider values are resolved lazily from host-owned encrypted credentials.
+  # Uncomment only providers configured for this application.
+  #
+  # config.oauth_provider(
+  #   :google_oauth2,
+  #   client_id: -> { Rails.application.credentials.dig(:google, :client_id) },
+  #   client_secret: -> { Rails.application.credentials.dig(:google, :client_secret) }
+  # )
+  # config.oauth_provider(
+  #   :apple,
+  #   client_id: -> { Rails.application.credentials.dig(:apple, :client_id) },
+  #   team_id: -> { Rails.application.credentials.dig(:apple, :team_id) },
+  #   key_id: -> { Rails.application.credentials.dig(:apple, :key_id) },
+  #   pem: -> { Rails.application.credentials.dig(:apple, :pem) }
+  # )
+  # config.oauth_provider(
+  #   :github,
+  #   client_id: -> { Rails.application.credentials.dig(:github, :client_id) },
+  #   client_secret: -> { Rails.application.credentials.dig(:github, :client_secret) }
+  # )
+end

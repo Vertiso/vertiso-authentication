@@ -1,6 +1,7 @@
 # Copyright © 2026. Copyright Vertiso Corporation, all rights reserved.
 
 require "rails/engine"
+require "view_component/base"
 require_relative "provider_registration"
 require_relative "omniauth/middleware"
 

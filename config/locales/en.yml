@@ -1,6 +1,29 @@
 en:
   vertiso:
     authentication:
+      components:
+        login_form:
+          continue_with: "Or continue with"
+          create_account: "Create account"
+          forgot_password: "Forgot your password?"
+          subtitle: "Sign in with your password or a connected account."
+        oauth_providers:
+          continue_with: "Continue with %{provider}"
+          continue_with_developer: "Continue with Developer"
+          label: "Connected account providers"
+          linked_accounts: "Linked accounts"
+          none_linked: "No accounts linked."
+          unlink: "Unlink %{provider}"
+          unlink_action: "Unlink"
+        password_field:
+          confirmation: "Password confirmation"
+          password: "Password"
+        shell:
+          home: "Home"
+        signup_form:
+          continue_with: "Or sign up with"
+          sign_in: "Sign in"
+          subtitle: "Create an account with your details or a connected account."
       confirmations:
         already_confirmed: "Your email is already confirmed."
         confirmed: "Email confirmed."
@@ -54,7 +77,9 @@ en:
         confirmation_dispatch_failed_oauth: "Account created, but the confirmation email couldn't be sent."
         create_failed: "Could not create account: %{errors}"
         email_invalid: "Please enter a valid email address."
-        oauth_email_collision_untrusted: "That email already has an account. Sign in with your password before linking %{provider}."
+        oauth_email_collision_untrusted: >-
+          That email already has an account. Sign in with your password before
+          linking %{provider}.
         oauth_email_needed: "%{provider} did not share an email address. Enter one to continue."
         oauth_email_session_expired: "That sign-up session expired. Please try again with your OAuth provider."
         oauth_failure: "OAuth sign-in failed: %{message}"

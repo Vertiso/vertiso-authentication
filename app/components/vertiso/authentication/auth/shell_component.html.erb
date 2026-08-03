@@ -1,0 +1,33 @@
+<%# Copyright © 2026. Copyright Vertiso Corporation, all rights reserved. %>
+
+<main class="vertiso-auth-shell min-h-dvh <%= theme.font %> <%= theme.surface %>"
+      aria-labelledby="vertiso-auth-title">
+  <div class="vertiso-auth-shell__container">
+    <%= link_to home_path,
+                aria: {
+                  label: t("vertiso.authentication.components.shell.home")
+                },
+                class: "vertiso-auth-shell__home #{theme.accent}" do %>
+      <span aria-hidden="true">
+        V
+      </span>
+    <% end %>
+
+    <header class="vertiso-auth-shell__header">
+      <h1 id="vertiso-auth-title"
+          class="vertiso-auth-shell__title <%= theme.foreground %>">
+        <%= title %>
+      </h1>
+      <% if subtitle.present? %>
+        <p class="vertiso-auth-shell__subtitle <%= theme.muted %>">
+          <%= subtitle %>
+        </p>
+      <% end %>
+    </header>
+
+    <div class="vertiso-auth-shell__surface <%= theme.surface %>
+                <%= theme.border %> <%= theme.spacing %> <%= theme.radius %>">
+      <%= content %>
+    </div>
+  </div>
+</main>

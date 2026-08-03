@@ -1,0 +1,73 @@
+<%# Copyright © 2026. Copyright Vertiso Corporation, all rights reserved. %>
+
+<%= render Vertiso::Authentication::Auth::ShellComponent.new(
+      title: t("vertiso.authentication.registrations.new.title"),
+      subtitle: t("vertiso.authentication.components.signup_form.subtitle"),
+      home_path:,
+      theme:
+    ) do %>
+  <% if principal.errors.any? %>
+    <div class="vertiso-auth-errors <%= theme.danger %> <%= theme.border %>
+                <%= theme.radius %>"
+         role="alert">
+      <ul>
+        <% principal.errors.full_messages.each do |error| %>
+          <li>
+            <%= error %>
+          </li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <%= form_with model: principal,
+                scope: :registration,
+                url: registration_path,
+                class: "vertiso-auth-form" do |form| %>
+    <div class="vertiso-auth-field">
+      <%= form.label :email,
+                     t("vertiso.authentication.registrations.new.email"),
+                     class: "vertiso-auth-field__label #{theme.foreground}" %>
+      <%= form.email_field :email,
+                           autocomplete: "email",
+                           required: true,
+                           value: principal_email,
+                           class: "vertiso-auth-field__input #{theme.field} #{theme.focus}" %>
+    </div>
+    <div class="vertiso-auth-field">
+      <%= form.label :user_name,
+                     t("vertiso.authentication.registrations.new.user_name"),
+                     class: "vertiso-auth-field__label #{theme.foreground}" %>
+      <%= form.text_field :user_name,
+                          autocomplete: "username",
+                          required: true,
+                          value: principal_user_name,
+                          class: "vertiso-auth-field__input #{theme.field} #{theme.focus}" %>
+    </div>
+    <%= render Vertiso::Authentication::Auth::PasswordFieldComponent.new(
+          form:,
+          theme:
+        ) %>
+    <%= form.submit t("vertiso.authentication.registrations.new.submit"),
+                    class: "vertiso-auth-button vertiso-auth-button--primary #{theme.button}" %>
+  <% end %>
+
+  <div class="vertiso-auth-separator">
+    <span>
+      <%= t("vertiso.authentication.components.signup_form.continue_with") %>
+    </span>
+  </div>
+
+  <%= render Vertiso::Authentication::Auth::OauthProvidersComponent.new(
+        providers:,
+        oauth_path:,
+        include_developer:,
+        theme:
+      ) %>
+
+  <p class="vertiso-auth-form__footer">
+    <%= link_to t("vertiso.authentication.components.signup_form.sign_in"),
+                login_path,
+                class: theme.accent %>
+  </p>
+<% end %>

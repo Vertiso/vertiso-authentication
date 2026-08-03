@@ -1,17 +1,13 @@
 <%# Copyright © 2026. Copyright Vertiso Corporation, all rights reserved. %>
 
-<h1>
-  <%= t(".title") %>
-</h1>
-
-<%= form_with scope: :session, url: session_path do |form| %>
-  <div>
-    <%= form.label :login, t(".login") %>
-    <%= form.text_field :login, autocomplete: "username", required: true %>
-  </div>
-  <div>
-    <%= form.label :password, t(".password") %>
-    <%= form.password_field :password, autocomplete: "current-password", required: true %>
-  </div>
-  <%= form.submit t(".submit") %>
-<% end %>
+<%= render Vertiso::Authentication::Auth::LoginFormComponent.new(
+      home_path: main_app.root_path,
+      login: params.dig(:session, :login),
+      session_path:,
+      forgot_password_path:,
+      registration_path: new_registration_path,
+      providers: Vertiso::Authentication::OauthProvider.where(active: true).order(:name),
+      oauth_path: ->(provider) { "/auth/#{provider}" },
+      errors: Array(flash[:alert]).compact,
+      include_developer: Rails.env.development?
+    ) %>

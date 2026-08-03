@@ -3,6 +3,8 @@
 require_relative "boot"
 
 require "rails/all"
+require "tailwindcss-rails"
+require "vertiso/authentication"
 
 module DummyStandard
   # Configures the conventional-principal dummy Rails application.
@@ -13,6 +15,9 @@ module DummyStandard
     config.active_storage.variant_processor = :disabled
     config.action_controller.allow_forgery_protection = false
     config.action_mailer.delivery_method = :test
+    config.assets = ActiveSupport::OrderedOptions.new
+    config.assets.excluded_paths = []
+    config.assets.precompile = []
     config.cache_store = :memory_store
     config.logger = ActiveSupport::Logger.new(IO::NULL)
     config.secret_key_base = "dummy-standard-test-secret-key-base"

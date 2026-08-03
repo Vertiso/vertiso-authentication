@@ -24,6 +24,17 @@ class VertisoAuthenticationRegistrationsControllerTest < ActionDispatch::Integra
     Vertiso::Authentication.reset_configuration!
   end
 
+  test "registration route renders the extracted authentication components" do
+    get REGISTRATION_PATH
+
+    assert_response :success
+    assert_select "main[aria-labelledby='vertiso-auth-title']"
+    assert_select "form[action='/authentication/register']"
+    assert_select "input[autocomplete='email'][required]"
+    assert_select "input[autocomplete='username'][required]"
+    assert_select "input[autocomplete='new-password'][required]", count: 2
+  end
+
   test "registration maps production authentication fields and logs in the principal" do
     assert_difference(-> { User.count }, 1) do
       post REGISTRATION_PATH, params: {

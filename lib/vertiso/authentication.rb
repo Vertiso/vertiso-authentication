@@ -3,6 +3,7 @@
 require "rails"
 require_relative "authentication/version"
 require_relative "authentication/engine"
+require_relative "authentication/theme"
 require_relative "authentication/configuration"
 require_relative "../../app/models/concerns/vertiso/authentication/authenticatable"
 

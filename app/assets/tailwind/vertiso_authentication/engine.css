@@ -1,0 +1,7 @@
+/* Copyright © 2026. Copyright Vertiso Corporation, all rights reserved. */
+
+@import "tailwindcss" source(none);
+@import "../../stylesheets/vertiso/authentication.css";
+
+@source "../../../components/vertiso/authentication/**/*.rb";
+@source "../../../components/vertiso/authentication/**/*.html.erb";

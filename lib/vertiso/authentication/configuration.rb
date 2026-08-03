@@ -25,7 +25,8 @@ module Vertiso
                     :mailer_sender,
                     :mailer_host,
                     :mailer_url_options,
-                    :dispatch_error_reporter
+                    :dispatch_error_reporter,
+                    :theme
 
       # Creates configuration using conventional Rails principal defaults.
       #
@@ -51,6 +52,7 @@ module Vertiso
         @mailer_host = nil
         @mailer_url_options = {}
         @dispatch_error_reporter = nil
+        @theme = Theme.default
         @oauth_providers = []
       end
 

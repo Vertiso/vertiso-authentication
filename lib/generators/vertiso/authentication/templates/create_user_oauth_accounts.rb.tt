@@ -1,0 +1,34 @@
+# Copyright © <%= Time.current.year %>. Copyright Vertiso Corporation, all rights reserved.
+
+class CreateVertisoAuthenticationUserOauthAccounts < ActiveRecord::Migration[8.1]
+  def change
+    create_table :vertiso_authentication_user_oauth_accounts do |table|
+      table.references :principal,
+                       polymorphic: true,
+                       null: false,
+                       index: {
+                         name: "idx_vertiso_auth_oauth_accounts_principal"
+                       }
+      table.references :oauth_provider,
+                       null: false,
+                       index: {
+                         name: "idx_vertiso_auth_oauth_accounts_provider"
+                       },
+                       foreign_key: {
+                         to_table: :vertiso_authentication_oauth_providers
+                       }
+      table.string :provider_uid, null: false
+      table.string :email
+      table.string :name
+      table.json :user_info
+      table.json :user_credentials
+      table.datetime :last_used_at
+      table.timestamps
+    end
+
+    add_index :vertiso_authentication_user_oauth_accounts,
+              %i[oauth_provider_id provider_uid],
+              unique: true,
+              name: "idx_vertiso_auth_oauth_accounts_identity"
+  end
+end

@@ -1,0 +1,14 @@
+# Copyright © <%= Time.current.year %>. Copyright Vertiso Corporation, all rights reserved.
+
+class AddVertisoAuthenticationFieldsTo<%= principal_class_name.pluralize %> < ActiveRecord::Migration[8.1]
+  def change
+    add_column :<%= principal_table_name %>, :password_digest, :string unless
+      column_exists?(:<%= principal_table_name %>, :password_digest)
+    add_column :<%= principal_table_name %>, :<%= options[:email_attribute] %>, :string unless
+      column_exists?(:<%= principal_table_name %>, :<%= options[:email_attribute] %>)
+    add_column :<%= principal_table_name %>, :<%= options[:user_name_attribute] %>, :string unless
+      column_exists?(:<%= principal_table_name %>, :<%= options[:user_name_attribute] %>)
+    add_column :<%= principal_table_name %>, :<%= options[:email_confirmed_at_attribute] %>, :datetime unless
+      column_exists?(:<%= principal_table_name %>, :<%= options[:email_confirmed_at_attribute] %>)
+  end
+end

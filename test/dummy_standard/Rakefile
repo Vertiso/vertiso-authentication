@@ -2,4 +2,7 @@
 
 require_relative "config/application"
 
+task "assets:precompile"
+task "assets:clobber"
+
 DummyStandard::Application.load_tasks
