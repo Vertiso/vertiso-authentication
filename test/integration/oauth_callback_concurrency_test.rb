@@ -96,7 +96,7 @@ if ENV["VAUTH_CONCURRENCY_WORKER"] == "1"
         ).principal
       )
     ensure
-      release_validation << true if release_validation&.empty?
+      release_validation << true if release_validation && release_validation.empty?
       remove_race_barrier
       loser_thread&.join
       winner_thread&.join
@@ -155,7 +155,7 @@ if ENV["VAUTH_CONCURRENCY_WORKER"] == "1"
       assert_equal principal.id, current_principal_id(session: winner)
       assert_equal principal.id, current_principal_id(session: loser)
     ensure
-      release_validation << true if release_validation&.empty?
+      release_validation << true if release_validation && release_validation.empty?
       remove_principal_race_barrier
       loser_thread&.join
       winner_thread&.join
@@ -227,7 +227,7 @@ if ENV["VAUTH_CONCURRENCY_WORKER"] == "1"
       assert_equal 2, User.count
       assert_equal 1, Vertiso::Authentication::UserOauthAccount.count
     ensure
-      release_validation << true if release_validation&.empty?
+      release_validation << true if release_validation && release_validation.empty?
       remove_race_barrier
       loser_thread&.join
       winner_thread&.join

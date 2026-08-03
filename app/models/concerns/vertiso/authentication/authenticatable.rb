@@ -143,8 +143,6 @@ module Vertiso
         end
       end
 
-      private
-
       # Initializes a portable, rotatable browser-session invalidation seed.
       #
       # @return [void]
@@ -220,7 +218,17 @@ module Vertiso
         Vertiso::Authentication.configuration.email_confirmed_at_attribute
       end
 
-      public
+      private :initialize_session_token_seed,
+              :password_required?,
+              :normalize_authentication_identity_attributes,
+              :authentication_identity_attributes_are_present,
+              :authentication_identity_attributes_are_unique,
+              :authentication_email_is_valid,
+              :authentication_identity_attributes,
+              :normalize_authentication_attribute,
+              :configured_email_attribute,
+              :configured_user_name_attribute,
+              :configured_email_confirmed_at_attribute
 
       # @return [Boolean] whether the configured email is verified
       def email_verified?

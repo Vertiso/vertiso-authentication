@@ -15,14 +15,8 @@ Layout/EmptyLinesAroundClassBody:
 Layout/HashAlignment:
   Enabled: false
 
-Lint/SafeNavigationWithEmpty:
-  Enabled: false
-
 Lint/UnusedBlockArgument:
   AllowUnusedKeywordArguments: true
-
-Lint/UselessAccessModifier:
-  Enabled: false
 
 Metrics:
   Enabled: false

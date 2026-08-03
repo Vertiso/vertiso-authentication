@@ -59,4 +59,34 @@ class VertisoAuthenticationAuthenticatableTest < ActiveSupport::TestCase
     assert_not user.valid?
     assert user.errors.of_kind?(:password, :invalid)
   end
+
+  test "keeps callbacks and configuration helpers private while preserving the public API" do
+    internal_methods = %i[
+      initialize_session_token_seed
+      password_required?
+      normalize_authentication_identity_attributes
+      authentication_identity_attributes_are_present
+      authentication_identity_attributes_are_unique
+      authentication_email_is_valid
+      authentication_identity_attributes
+      normalize_authentication_attribute
+      configured_email_attribute
+      configured_user_name_attribute
+      configured_email_confirmed_at_attribute
+    ]
+    public_methods = %i[
+      email_verified?
+      verify_email
+      reset_session_token!
+    ]
+
+    internal_methods.each do |method|
+      assert_includes User.private_instance_methods, method
+      refute_includes User.public_instance_methods, method
+    end
+    public_methods.each do |method|
+      assert_includes User.public_instance_methods, method
+      refute_includes User.private_instance_methods, method
+    end
+  end
 end

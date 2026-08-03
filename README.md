@@ -4,7 +4,8 @@ Reusable authentication for modern Rails applications.
 
 `vertiso-authentication` extracts authentication behavior already operating in
 GoalMindr and Vertiso Memory into a configurable Rails Engine. It connects to
-an application's existing principal model or can generate a minimal one.
+an application's existing principal model, which the host application defines
+and owns.
 
 > [!IMPORTANT]
 > This project is in internal preview. Its production-proven behavior is being
@@ -99,7 +100,7 @@ The engine owns:
 - Provider email-trust behavior
 - Namespaced controllers and mailers
 - Default ViewComponents and theme tokens
-- Route, migration, component, and principal-model generators
+- Installation, migration, route, and component generators
 - Minitest integration and regression coverage
 
 The default implementation remains in the gem so a normal upgrade can deliver
@@ -239,9 +240,9 @@ missing identity rejects the login and does not create a principal.
 The developer provider is not registered or rendered outside the Rails
 development environment, and its callback rejects non-development requests.
 
-## Planned host integration
+## Host integration
 
-The intended principal integration is:
+The principal integration is:
 
 ```ruby
 class User < ApplicationRecord
@@ -251,20 +252,20 @@ end
 
 ```ruby
 Vertiso::Authentication.configure do |config|
-  config.principal_class = "User"
-
-  config.attributes.email = :email
-  config.attributes.user_name = :user_name
-  config.attributes.email_verified_at = :email_verified_at
+  config.principal_class_name = "User"
+  config.email_attribute = :email
+  config.user_name_attribute = :user_name
+  config.email_confirmed_at_attribute = :email_verified_at
 end
 ```
 
-The installer will support an existing principal model and a generator for
-applications without one. Public authentication paths and successful-login
-destinations remain host-configurable.
+The host application must define its principal model before running the
+installer. The installer aborts if the configured principal model is missing;
+it does not generate the host's canonical identity model. Public authentication
+paths and successful-login destinations remain host-configurable.
 
-The exact generator names and configuration API remain provisional until the
-engine skeleton and generator contract are tested.
+Executable documentation and generator tests cover the configuration and
+installation contracts.
 
 ## ViewComponents and theming
 
