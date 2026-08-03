@@ -304,7 +304,9 @@ module Vertiso
       # @param provider [Vertiso::Authentication::OauthProvider]
       # @return [Vertiso::Authentication::UserOauthAccount]
       def create_oauth_account_idempotently(principal:, auth:, provider:)
-        create_oauth_account(principal:, auth:, provider:)
+        UserOauthAccount.transaction(requires_new: true) do
+          create_oauth_account(principal:, auth:, provider:)
+        end
       rescue ActiveRecord::RecordInvalid => error
         raise unless oauth_identity_uniqueness_failure?(
           error:,
@@ -413,12 +415,18 @@ module Vertiso
           )
         )
 
-        principal_class.transaction do
+        principal_class.transaction(requires_new: true) do
           principal.save!
           create_oauth_account(principal:, auth:, provider:)
         end
         principal
       rescue ActiveRecord::RecordInvalid => error
+        winner = oauth_identity_winner(
+          provider:,
+          uid: auth.uid
+        )
+        return winner.principal if winner
+
         if oauth_identity_uniqueness_failure?(
           error:,
           provider:,
@@ -547,13 +555,22 @@ module Vertiso
       # @return [Vertiso::Authentication::UserOauthAccount]
       # @raise [ActiveRecord::ActiveRecordError] when no exact winner exists
       def oauth_identity_winner_or_raise(error:, provider:, uid:)
-        winner = UserOauthAccount.find_by(
-          oauth_provider: provider,
-          provider_uid: uid
-        )
+        winner = oauth_identity_winner(provider:, uid:)
         raise error unless winner
 
         winner
+      end
+
+      # Finds the exact committed provider-identity winner.
+      #
+      # @param provider [Vertiso::Authentication::OauthProvider]
+      # @param uid [String]
+      # @return [Vertiso::Authentication::UserOauthAccount, nil]
+      def oauth_identity_winner(provider:, uid:)
+        UserOauthAccount.find_by(
+          oauth_provider: provider,
+          provider_uid: uid
+        )
       end
 
       # Stashes the callback fields needed for a delayed email completion.

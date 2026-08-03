@@ -102,6 +102,137 @@ if ENV["VAUTH_CONCURRENCY_WORKER"] == "1"
       winner_thread&.join
     end
 
+    test "anonymous callbacks resolve a principal-validation race winner" do
+      provider = Vertiso::Authentication::OauthProvider.create!(
+        name: "google_oauth2",
+        display_name: "Google",
+        trusts_email: true
+      )
+      loser = ActionDispatch::Integration::Session.new(Rails.application)
+      winner = ActionDispatch::Integration::Session.new(Rails.application)
+      entered_validation = Queue.new
+      release_validation = Queue.new
+      observed_collision = Queue.new
+      account_validation = Queue.new
+      target_uid = "anonymous-concurrent-provider-identity"
+
+      install_principal_race_barrier(
+        entered_validation:,
+        release_validation:,
+        observed_collision:,
+        account_validation:
+      )
+
+      loser_thread = callback_thread(
+        session: loser,
+        role: :loser,
+        target_uid:
+      )
+      entered_validation.pop
+      winner_thread = callback_thread(
+        session: winner,
+        role: :winner,
+        target_uid:
+      )
+      winner_result = winner_thread.value
+      release_validation << true
+      loser_result = loser_thread.value
+
+      account = Vertiso::Authentication::UserOauthAccount.find_by!(
+        oauth_provider: provider,
+        provider_uid: target_uid
+      )
+      principal = account.principal
+      expected_location = oauth_destination(principal)
+      assert_equal 302, winner_result.fetch(:status)
+      assert_equal expected_location, winner_result.fetch(:location)
+      assert_equal 302, loser_result.fetch(:status)
+      assert_equal expected_location, loser_result.fetch(:location)
+      assert_includes observed_collision.pop, [:email, :taken]
+      assert_predicate account_validation, :empty?
+      assert_equal 1, User.count
+      assert_equal 1, Vertiso::Authentication::UserOauthAccount.count
+      assert_equal principal.id, current_principal_id(session: winner)
+      assert_equal principal.id, current_principal_id(session: loser)
+    ensure
+      release_validation << true if release_validation&.empty?
+      remove_principal_race_barrier
+      loser_thread&.join
+      winner_thread&.join
+    end
+
+    test "different signed-in principals keep their owners after race recovery" do
+      provider = Vertiso::Authentication::OauthProvider.create!(
+        name: "google_oauth2",
+        display_name: "Google",
+        trusts_email: true
+      )
+      loser_principal = User.create!(
+        email: "loser-owner@example.com",
+        user_name: "loser-owner",
+        password: PASSWORD,
+        password_confirmation: PASSWORD
+      )
+      winner_principal = User.create!(
+        email: "winner-owner@example.com",
+        user_name: "winner-owner",
+        password: PASSWORD,
+        password_confirmation: PASSWORD
+      )
+      loser = signed_in_session(principal: loser_principal)
+      winner = signed_in_session(principal: winner_principal)
+      entered_validation = Queue.new
+      release_validation = Queue.new
+      observed_collision = Queue.new
+      target_uid = "different-owner-provider-identity"
+
+      install_race_barrier(
+        target_uid:,
+        entered_validation:,
+        release_validation:,
+        observed_collision:
+      )
+
+      loser_thread = callback_thread(
+        session: loser,
+        role: :loser,
+        target_uid:
+      )
+      entered_validation.pop
+      winner_thread = callback_thread(
+        session: winner,
+        role: :winner,
+        target_uid:
+      )
+      winner_result = winner_thread.value
+      release_validation << true
+      loser_result = loser_thread.value
+
+      assert_equal oauth_destination(winner_principal),
+                   winner_result.fetch(:location)
+      assert_equal oauth_destination(loser_principal),
+                   loser_result.fetch(:location)
+      assert_equal :taken, observed_collision.pop
+      assert_equal(
+        winner_principal,
+        Vertiso::Authentication::UserOauthAccount.find_by!(
+          oauth_provider: provider,
+          provider_uid: target_uid
+        ).principal
+      )
+      assert_equal loser_principal.id,
+                   current_principal_id(session: loser)
+      assert_equal winner_principal.id,
+                   current_principal_id(session: winner)
+      assert_equal 2, User.count
+      assert_equal 1, Vertiso::Authentication::UserOauthAccount.count
+    ensure
+      release_validation << true if release_validation&.empty?
+      remove_race_barrier
+      loser_thread&.join
+      winner_thread&.join
+    end
+
     private
 
     # Runs one callback in an isolated database connection.
@@ -222,6 +353,56 @@ if ENV["VAUTH_CONCURRENCY_WORKER"] == "1"
       end
     end
 
+    # Installs a principal-validation race before linked-account validation.
+    #
+    # @param entered_validation [Queue]
+    # @param release_validation [Queue]
+    # @param observed_collision [Queue]
+    # @param account_validation [Queue]
+    # @return [void]
+    def install_principal_race_barrier(
+      entered_validation:,
+      release_validation:,
+      observed_collision:,
+      account_validation:
+    )
+      before_principal_validation = lambda do
+        next unless Thread.current[:vauth_oauth_race_role] == :loser
+
+        entered_validation << true
+        release_validation.pop
+      end
+      after_principal_validation = lambda do |principal|
+        next unless Thread.current[:vauth_oauth_race_role] == :loser
+
+        collisions = %i[email user_name].filter_map do |attribute|
+          detail = principal.errors.details.fetch(attribute, []).find do |error|
+            error[:error] == :taken
+          end
+          [attribute, detail[:error]] if detail
+        end
+        observed_collision << collisions if collisions.any?
+      end
+      before_account_validation = lambda do
+        next unless Thread.current[:vauth_oauth_race_role] == :loser
+
+        account_validation << true
+      end
+      @principal_race_callbacks = [
+        [User, :validation, :before, before_principal_validation],
+        [User, :validation, :after, after_principal_validation],
+        [
+          Vertiso::Authentication::UserOauthAccount,
+          :validation,
+          :before,
+          before_account_validation
+        ]
+      ]
+      @principal_race_callbacks.each do |klass, lifecycle, kind, callback|
+        klass.set_callback(lifecycle, kind, callback)
+      end
+    end
+
     # Removes the validation barrier when installed.
     #
     # @return [void]
@@ -236,6 +417,20 @@ if ENV["VAUTH_CONCURRENCY_WORKER"] == "1"
         )
       end
       @race_callbacks = nil
+    rescue ArgumentError
+      nil
+    end
+
+    # Removes the principal-validation race callbacks when installed.
+    #
+    # @return [void]
+    def remove_principal_race_barrier
+      return unless @principal_race_callbacks
+
+      @principal_race_callbacks.each do |klass, lifecycle, kind, callback|
+        klass.skip_callback(lifecycle, kind, callback)
+      end
+      @principal_race_callbacks = nil
     rescue ArgumentError
       nil
     end
@@ -266,6 +461,15 @@ if ENV["VAUTH_CONCURRENCY_WORKER"] == "1"
     def oauth_destination(principal)
       "http://www.example.com/signed-in?" \
         "principal_id=#{principal.id}&source=oauth"
+    end
+
+    # Returns the host-visible current principal for a browser session.
+    #
+    # @param session [ActionDispatch::Integration::Session]
+    # @return [Integer, nil]
+    def current_principal_id(session:)
+      session.get("/authentication-state")
+      session.response.parsed_body["principal_id"]
     end
 
     # Creates an independent browser session signed into the same principal.

@@ -261,6 +261,81 @@ class VertisoAuthenticationOauthSessionsControllerTest < ActionDispatch::Integra
     assert_nil account.email
   end
 
+  test "signed-in identity linking uses a savepoint inside the ambient transaction" do
+    principal = create_principal(
+      email: "savepoint-owner@example.com",
+      user_name: "savepoint-owner"
+    )
+    sign_in(principal)
+
+    statements = nil
+    within_joinable_ambient_transaction do
+      statements = capture_sql do
+        get CALLBACK_PATH,
+            env: {
+              "omniauth.auth" => oauth_auth(
+                uid: "signed-in-savepoint",
+                email: principal.email
+              )
+            }
+      end
+
+      assert_redirected_to oauth_destination(principal)
+    end
+
+    assert_sql_order(
+      statements:,
+      patterns: [
+        /\ASAVEPOINT /,
+        /\AINSERT INTO "vertiso_authentication_user_oauth_accounts"/,
+        /\ARELEASE SAVEPOINT /
+      ]
+    )
+  end
+
+  test "signed-in validation recovery queries winner after savepoint rollback" do
+    identity_owner = create_principal(
+      email: "identity-owner@example.com",
+      user_name: "identity-owner"
+    )
+    linking_principal = create_principal(
+      email: "linking-principal@example.com",
+      user_name: "linking-principal"
+    )
+    target_uid = "signed-in-validation-winner"
+    winner = identity_owner.authentication_oauth_accounts.create!(
+      oauth_provider: @provider,
+      provider_uid: target_uid
+    )
+    auth = oauth_auth(
+      uid: target_uid,
+      email: linking_principal.email
+    )
+    recovered = nil
+    statements = nil
+
+    within_joinable_ambient_transaction do
+      statements = capture_sql do
+        recovered = oauth_controller.send(
+          :create_oauth_account_idempotently,
+          principal: linking_principal,
+          auth:,
+          provider: @provider
+        )
+      end
+    end
+
+    assert_equal winner, recovered
+    assert_sql_order(
+      statements:,
+      patterns: [
+        /\ASAVEPOINT /,
+        /\AROLLBACK TO SAVEPOINT /,
+        identity_winner_select_pattern
+      ]
+    )
+  end
+
   test "trusted email collision links and signs in the existing principal" do
     existing = create_principal(
       email: "existing@example.com",
@@ -821,28 +896,42 @@ class VertisoAuthenticationOauthSessionsControllerTest < ActionDispatch::Integra
         }
       end
 
-    assert_no_difference(-> { User.count }) do
-      assert_difference(
-        -> { Vertiso::Authentication::UserOauthAccount.count },
-        1
-      ) do
-        get CALLBACK_PATH,
-            env: {
-              "omniauth.auth" => oauth_auth(
-                uid: target_uid,
-                email: "new-callback@example.com"
-              )
-            }
+    statements = nil
+    within_joinable_ambient_transaction do
+      statements = capture_sql do
+        assert_no_difference(-> { User.count }) do
+          assert_difference(
+            -> { Vertiso::Authentication::UserOauthAccount.count },
+            1
+          ) do
+            get CALLBACK_PATH,
+                env: {
+                  "omniauth.auth" => oauth_auth(
+                    uid: target_uid,
+                    email: "new-callback@example.com"
+                  )
+                }
+          end
+        end
       end
+
+      account = Vertiso::Authentication::UserOauthAccount.find_by!(
+        oauth_provider: @provider,
+        provider_uid: target_uid
+      )
+      assert_equal winner, account.principal
+      assert_redirected_to oauth_destination(winner)
+      assert_equal winner.id, current_principal_id
     end
 
-    account = Vertiso::Authentication::UserOauthAccount.find_by!(
-      oauth_provider: @provider,
-      provider_uid: target_uid
+    assert_sql_order(
+      statements:,
+      patterns: [
+        /\ASAVEPOINT /,
+        /\AROLLBACK TO SAVEPOINT /,
+        identity_winner_select_pattern
+      ]
     )
-    assert_equal winner, account.principal
-    assert_redirected_to oauth_destination(winner)
-    assert_equal winner.id, current_principal_id
   ensure
     if uniqueness_validator
       Vertiso::Authentication::UserOauthAccount.set_callback(
@@ -851,6 +940,49 @@ class VertisoAuthenticationOauthSessionsControllerTest < ActionDispatch::Integra
         uniqueness_validator
       )
     end
+  end
+
+  test "anonymous principal validation resolves only after savepoint rollback" do
+    winner = create_principal(
+      email: "anonymous-winner@example.com",
+      user_name: "anonymous-winner"
+    )
+    target_uid = "anonymous-validation-winner"
+    winner.authentication_oauth_accounts.create!(
+      oauth_provider: @provider,
+      provider_uid: target_uid
+    )
+    Vertiso::Authentication.configuration.oauth_user_name_allocator =
+      ->(**) { winner.user_name }
+    auth = oauth_auth(
+      uid: target_uid,
+      email: winner.email
+    )
+    recovered = nil
+    statements = nil
+
+    within_joinable_ambient_transaction do
+      statements = capture_sql do
+        recovered = oauth_controller.send(
+          :create_principal_with_oauth_account,
+          auth:,
+          provider: @provider,
+          email: winner.email,
+          trusted: true
+        )
+      end
+    end
+
+    assert_equal winner, recovered
+    assert_equal 1, User.where(email: winner.email).count
+    assert_sql_order(
+      statements:,
+      patterns: [
+        /\ASAVEPOINT /,
+        /\AROLLBACK TO SAVEPOINT /,
+        identity_winner_select_pattern
+      ]
+    )
   end
 
   test "principal and linked account creation are atomic" do
@@ -993,6 +1125,67 @@ class VertisoAuthenticationOauthSessionsControllerTest < ActionDispatch::Integra
   def current_principal_id
     get STATE_PATH
     response.parsed_body["principal_id"]
+  end
+
+  # Captures application SQL emitted by a block.
+  #
+  # @yieldreturn [Object]
+  # @return [Array<String>]
+  def capture_sql
+    statements = []
+    subscriber = ActiveSupport::Notifications.subscribe(
+      "sql.active_record"
+    ) do |event|
+      statements << event.payload[:sql] unless event.payload[:name] == "SCHEMA"
+    end
+    yield
+    statements
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+  end
+
+  # Asserts that SQL patterns occur in strict order.
+  #
+  # @param statements [Array<String>]
+  # @param patterns [Array<Regexp>]
+  # @return [void]
+  def assert_sql_order(statements:, patterns:)
+    next_statement = 0
+    patterns.each do |pattern|
+      match = statements.each_index.find do |index|
+        index >= next_statement && statements.fetch(index).match?(pattern)
+      end
+      assert match, "Missing #{pattern.inspect} after SQL #{next_statement}"
+      next_statement = match + 1
+    end
+  end
+
+  # Matches the exact provider-identity winner query.
+  #
+  # @return [Regexp]
+  def identity_winner_select_pattern
+    /\ASELECT .* FROM "vertiso_authentication_user_oauth_accounts"/
+  end
+
+  # Returns a controller instance for direct transactional write coverage.
+  #
+  # @return [Vertiso::Authentication::SessionsController]
+  def oauth_controller
+    Vertiso::Authentication::SessionsController.new
+  end
+
+  # Runs a block inside a materialized joinable ambient transaction.
+  #
+  # @yieldreturn [Object]
+  # @return [Object]
+  def within_joinable_ambient_transaction
+    result = nil
+    ActiveRecord::Base.transaction(requires_new: true, joinable: true) do
+      ActiveRecord::Base.connection.execute("SELECT 1")
+      result = yield
+      raise ActiveRecord::Rollback
+    end
+    result
   end
 
   # Returns the provider-identity uniqueness validator callback.
