@@ -2,35 +2,29 @@
 
 class AddVertisoAuthenticationFieldsTo<%= principal_class_name.pluralize %> < ActiveRecord::Migration[8.1]
   def change
-    add_column :<%= principal_table_name %>, :password_digest, :string unless
-      column_exists?(:<%= principal_table_name %>, :password_digest)
-    add_column :<%= principal_table_name %>, :<%= options[:email_attribute] %>, :string unless
-      column_exists?(:<%= principal_table_name %>, :<%= options[:email_attribute] %>)
-    add_column :<%= principal_table_name %>, :<%= options[:user_name_attribute] %>, :string unless
-      column_exists?(:<%= principal_table_name %>, :<%= options[:user_name_attribute] %>)
-    add_column :<%= principal_table_name %>, :<%= options[:email_confirmed_at_attribute] %>, :datetime unless
-      column_exists?(:<%= principal_table_name %>, :<%= options[:email_confirmed_at_attribute] %>)
-
-    unless index_exists?(
-      :<%= principal_table_name %>,
-      :<%= options[:email_attribute] %>,
-      unique: true
-    )
-      add_index :<%= principal_table_name %>,
-                :<%= options[:email_attribute] %>,
-                unique: true,
-                name: "<%= principal_email_index_name %>"
-    end
-
-    unless index_exists?(
-      :<%= principal_table_name %>,
-      :<%= options[:user_name_attribute] %>,
-      unique: true
-    )
-      add_index :<%= principal_table_name %>,
-                :<%= options[:user_name_attribute] %>,
-                unique: true,
-                name: "<%= principal_user_name_index_name %>"
-    end
+<% unless principal_column_exists?(:password_digest) -%>
+    add_column :<%= principal_table_name %>, :password_digest, :string
+<% end -%>
+<% unless principal_column_exists?(options[:email_attribute]) -%>
+    add_column :<%= principal_table_name %>, :<%= options[:email_attribute] %>, :string
+<% end -%>
+<% unless principal_column_exists?(options[:user_name_attribute]) -%>
+    add_column :<%= principal_table_name %>, :<%= options[:user_name_attribute] %>, :string
+<% end -%>
+<% unless principal_column_exists?(options[:email_confirmed_at_attribute]) -%>
+    add_column :<%= principal_table_name %>, :<%= options[:email_confirmed_at_attribute] %>, :datetime
+<% end -%>
+<% unless principal_unique_index_exists?(options[:email_attribute]) -%>
+    add_index :<%= principal_table_name %>,
+              :<%= options[:email_attribute] %>,
+              unique: true,
+              name: "<%= principal_email_index_name %>"
+<% end -%>
+<% unless principal_unique_index_exists?(options[:user_name_attribute]) -%>
+    add_index :<%= principal_table_name %>,
+              :<%= options[:user_name_attribute] %>,
+              unique: true,
+              name: "<%= principal_user_name_index_name %>"
+<% end -%>
   end
 end

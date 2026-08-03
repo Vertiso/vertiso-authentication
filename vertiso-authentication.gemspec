@@ -12,7 +12,21 @@ Gem::Specification.new do |spec|
   spec.license = "MIT"
   spec.required_ruby_version = ">= 4.0"
 
-  spec.files = Dir["{app,config,lib,test}/**/*", "Gemfile", "Rakefile", "README.md"]
+  spec.metadata = {
+    "bug_tracker_uri" => "https://github.com/Vertiso/vertiso-authentication/issues",
+    "changelog_uri" => "https://github.com/Vertiso/vertiso-authentication/blob/main/CHANGELOG.md",
+    "homepage_uri" => spec.homepage,
+    "rubygems_mfa_required" => "true",
+    "source_code_uri" => "https://github.com/Vertiso/vertiso-authentication"
+  }
+
+  spec.files = Dir[
+    "{app,config,db/migrate,lib}/**/*",
+    "CHANGELOG.md",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md"
+  ].select { |path| File.file?(path) }
   spec.add_dependency "bcrypt"
   spec.add_dependency "omniauth"
   spec.add_dependency "omniauth-apple"
@@ -22,5 +36,9 @@ Gem::Specification.new do |spec|
   spec.add_dependency "rails", ">= 8.1"
   spec.add_dependency "tailwindcss-rails"
   spec.add_dependency "view_component", ">= 4.0"
+  spec.add_development_dependency "brakeman"
+  spec.add_development_dependency "bundler-audit"
+  spec.add_development_dependency "pg"
+  spec.add_development_dependency "rubocop"
   spec.add_development_dependency "sqlite3"
 end

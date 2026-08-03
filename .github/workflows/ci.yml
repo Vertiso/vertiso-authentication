@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  sqlite:
+    name: SQLite / ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Rails 8.1 lower series
+            rails_version: "~> 8.1.0"
+          - name: Current compatible resolution
+            rails_version: ""
+    env:
+      RAILS_VERSION: ${{ matrix.rails_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+      - run: bundle exec rake test:sqlite
+
+  postgresql:
+    name: PostgreSQL
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: vertiso_authentication_test
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vertiso_authentication_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/vertiso_authentication_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+      - run: bundle exec ruby -Itest test/integration/database_portability_test.rb
+      - run: bundle exec rake test:postgresql
+
+  quality:
+    name: Quality and package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+      - run: bundle exec rake quality:rubocop
+      - run: bundle exec rake quality:brakeman
+      - run: bundle exec rake quality:audit
+      - run: bundle exec rake package:validate

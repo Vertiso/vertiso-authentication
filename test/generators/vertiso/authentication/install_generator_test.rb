@@ -7,6 +7,8 @@ require "open3"
 class VertisoAuthenticationInstallGeneratorTest < Rails::Generators::TestCase
   include VertisoAuthenticationGeneratorTestHelper
 
+  self.use_transactional_tests = false
+
   tests Vertiso::Authentication::Generators::InstallGenerator
   destination File.expand_path(
     "../../../../tmp/install_generator",
@@ -14,7 +16,12 @@ class VertisoAuthenticationInstallGeneratorTest < Rails::Generators::TestCase
   )
 
   setup do
+    ActiveRecord::Base.connection.drop_table(:members, if_exists: true)
     build_host
+  end
+
+  teardown do
+    ActiveRecord::Base.connection.drop_table(:members, if_exists: true)
   end
 
   test "installs mapped host integration and portable engine artifacts" do
@@ -139,12 +146,14 @@ class VertisoAuthenticationInstallGeneratorTest < Rails::Generators::TestCase
   end
 
   test "generated fields migration preserves existing unique identity indexes" do
-    run_generator generator_arguments
+    with_existing_principal_identity_columns do
+      run_generator generator_arguments
 
-    assert_generated_migrations_execute(
-      "add_vertiso_authentication_fields_to_members",
-      mode: "preindexed_fields"
-    )
+      assert_generated_migrations_execute(
+        "add_vertiso_authentication_fields_to_members",
+        mode: "preindexed_fields"
+      )
+    end
   end
 
   test "all generated migrations execute up and down as one migration set" do
@@ -186,7 +195,7 @@ class VertisoAuthenticationInstallGeneratorTest < Rails::Generators::TestCase
 
     assert status.success?, "#{stdout}\n#{stderr}"
     assert_includes stdout, "EXECUTED"
-    assert_includes stdout, "ROLLED_BACK" if mode == "all"
+    assert_includes stdout, "ROLLED_BACK" if %w[all preindexed_fields].include?(mode)
   ensure
     FileUtils.rm_f(database_path)
   end
@@ -259,10 +268,13 @@ class VertisoAuthenticationInstallGeneratorTest < Rails::Generators::TestCase
 
       puts "EXECUTED"
 
-      if mode == "all"
+      if ["all", "preindexed_fields"].include?(mode)
         migrations.reverse_each do |migration|
           migration.migrate(:down)
         end
+      end
+
+      if mode == "all"
         engine_tables = %i[
           vertiso_authentication_authentication_sessions
           vertiso_authentication_oauth_providers
@@ -277,8 +289,44 @@ class VertisoAuthenticationInstallGeneratorTest < Rails::Generators::TestCase
         ) == 1
 
         puts "ROLLED_BACK"
+      elsif mode == "preindexed_fields"
+        %w[contact_email handle].each do |column|
+          raise "pre-existing column removed: #{column}" unless
+            connection.column_exists?(:members, column)
+          indexes = connection.indexes(:members).select do |index|
+            index.columns == [column] && index.unique
+          end
+          raise "pre-existing index changed: #{column}" unless
+            indexes.map(&:name) == ["existing_members_#{column}_unique"]
+        end
+        %w[password_digest email_confirmed_at].each do |column|
+          raise "generated column remains: #{column}" if
+            connection.column_exists?(:members, column)
+        end
+
+        puts "ROLLED_BACK"
       end
     RUBY
+  end
+
+  def with_existing_principal_identity_columns
+    connection = ActiveRecord::Base.connection
+    connection.drop_table(:members, if_exists: true)
+    connection.create_table(:members) do |table|
+      table.string :contact_email
+      table.string :handle
+    end
+    %w[contact_email handle].each do |column|
+      connection.add_index(
+        :members,
+        column,
+        unique: true,
+        name: "existing_members_#{column}_unique"
+      )
+    end
+    yield
+  ensure
+    connection&.drop_table(:members, if_exists: true)
   end
 
   def generator_arguments

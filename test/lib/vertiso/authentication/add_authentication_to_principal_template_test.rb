@@ -4,8 +4,12 @@ require 'test_helper'
 require 'erb'
 
 class AddAuthenticationToPrincipalTemplateTest < ActiveSupport::TestCase
+  self.use_transactional_tests = false
+
   setup do
-    connection.remove_column(:users, :session_token_seed)
+    connection.drop_table(:members, if_exists: true)
+    connection.remove_column(:users, :session_token_seed) if
+      connection.column_exists?(:users, :session_token_seed)
     connection.create_table :members do |table|
       table.string :email, null: false
     end
@@ -14,7 +18,7 @@ class AddAuthenticationToPrincipalTemplateTest < ActiveSupport::TestCase
   end
 
   teardown do
-    connection.drop_table(:members) if connection.table_exists?(:members)
+    connection.drop_table(:members, if_exists: true)
     unless connection.column_exists?(:users, :session_token_seed)
       connection.add_column :users, :session_token_seed, :string, default: '', null: false
     end

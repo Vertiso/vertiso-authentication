@@ -2,4 +2,6 @@
 
 source "https://rubygems.org"
 
+gem "rails", ENV.fetch("RAILS_VERSION") unless ENV.fetch("RAILS_VERSION", "").empty?
+
 gemspec

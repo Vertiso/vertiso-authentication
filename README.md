@@ -319,6 +319,46 @@ Do not open a public issue containing an exploit, credential, token, or user
 data. A `SECURITY.md` and GitHub private vulnerability-reporting instructions
 are mandatory before public release.
 
+See [SECURITY.md](SECURITY.md) for private reporting instructions and the
+current support policy.
+
+## Development and quality gates
+
+This repository uses Minitest and SQLite by default:
+
+```bash
+bundle exec rake test
+bundle exec rake test:sqlite
+```
+
+Run the identical suite against a dedicated PostgreSQL test database:
+
+```bash
+DATABASE_URL=postgresql://localhost/vertiso_authentication_test \
+  bundle exec rake test:postgresql
+```
+
+Run individual quality and package gates:
+
+```bash
+bundle exec rake quality:rubocop
+bundle exec rake quality:brakeman
+bundle exec rake quality:audit
+bundle exec rake package:validate
+```
+
+The complete local gate requires `DATABASE_URL` to identify a PostgreSQL test
+database:
+
+```bash
+DATABASE_URL=postgresql://localhost/vertiso_authentication_test \
+  bundle exec rake ci
+```
+
+The project remains in internal adoption before its first public release. The
+compatibility baseline and public API are not final until the planned host
+applications run against the extracted gem.
+
 ## Development status
 
 Phase 0 establishes the repository, public contract, and private extraction

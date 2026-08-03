@@ -1,5 +1,10 @@
 # Copyright © 2026. Copyright Vertiso Corporation, all rights reserved.
 
+ActiveRecord::Base.connection.drop_table(
+  :vertiso_authentication_user_oauth_accounts,
+  if_exists: true
+)
+
 ActiveRecord::Schema[8.1].define do
   create_table :users, force: true do |table|
     table.string :email, null: false

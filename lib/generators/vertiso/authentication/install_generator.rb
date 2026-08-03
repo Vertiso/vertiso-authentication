@@ -183,6 +183,29 @@ module Vertiso
           "idx_vertiso_auth_#{digest}"
         end
 
+        # Returns whether the configured principal table already has a column.
+        #
+        # @param attribute [String, Symbol]
+        # @return [Boolean]
+        def principal_column_exists?(attribute)
+          connection = ActiveRecord::Base.connection
+          connection.data_source_exists?(principal_table_name) &&
+            connection.column_exists?(principal_table_name, attribute)
+        end
+
+        # Returns whether the principal already has a unique single-column index.
+        #
+        # @param attribute [String, Symbol]
+        # @return [Boolean]
+        def principal_unique_index_exists?(attribute)
+          connection = ActiveRecord::Base.connection
+          return false unless connection.data_source_exists?(principal_table_name)
+
+          connection.indexes(principal_table_name).any? do |index|
+            index.unique && index.columns == [attribute.to_s]
+          end
+        end
+
         # @return [String]
         def destination_path(path)
           File.join(destination_root, path)
