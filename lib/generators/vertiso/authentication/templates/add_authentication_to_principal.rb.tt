@@ -1,0 +1,8 @@
+# Copyright © 2026. Copyright Vertiso Corporation, all rights reserved.
+
+# Adds the browser-session invalidation seed to the host principal table.
+class AddAuthenticationToPrincipal < ActiveRecord::Migration[8.1]
+  def change
+    add_column :users, :session_token_seed, :string, default: '', null: false
+  end
+end

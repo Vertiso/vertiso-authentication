@@ -13,6 +13,7 @@ module Vertiso
       included do
         has_secure_password
 
+        before_create :initialize_session_token_seed
         before_validation :normalize_authentication_identity_attributes
 
         validate :authentication_identity_attributes_are_present
@@ -23,6 +24,27 @@ module Vertiso
                   length: { minimum: MIN_PASSWORD_LENGTH, maximum: MAX_PASSWORD_LENGTH },
                   format: { with: VALID_PASSWORD_REGEX },
                   if: :password_required?
+
+        generates_token_for(
+          :remember_token,
+          expires_in: Vertiso::Authentication.configuration.remember_token_lifetime
+        ) do
+          [password_salt&.last(10), session_token_seed]
+        end
+
+        generates_token_for(
+          :email_verification,
+          expires_in: Vertiso::Authentication.configuration.email_confirmation_lifetime
+        ) do
+          public_send(configured_email_attribute)
+        end
+
+        generates_token_for(
+          :password_reset,
+          expires_in: Vertiso::Authentication.configuration.password_reset_lifetime
+        ) do
+          [password_salt&.last(10), public_send(configured_email_attribute)]
+        end
       end
 
       class_methods do
@@ -81,6 +103,13 @@ module Vertiso
 
       private
 
+      # Initializes a portable, rotatable browser-session invalidation seed.
+      #
+      # @return [void]
+      def initialize_session_token_seed
+        self.session_token_seed = SecureRandom.hex(16) if session_token_seed.blank?
+      end
+
       # @return [Boolean]
       def password_required?
         password.present?
@@ -132,6 +161,33 @@ module Vertiso
       # @return [Symbol]
       def configured_user_name_attribute
         Vertiso::Authentication.configuration.user_name_attribute
+      end
+
+      # @return [Symbol]
+      def configured_email_confirmed_at_attribute
+        Vertiso::Authentication.configuration.email_confirmed_at_attribute
+      end
+
+      public
+
+      # @return [Boolean] whether the configured email is verified
+      def email_verified?
+        public_send(configured_email_confirmed_at_attribute).present?
+      end
+
+      # Marks the configured email confirmation timestamp as verified.
+      #
+      # @return [Boolean]
+      def verify_email
+        update(configured_email_confirmed_at_attribute => Time.zone.now)
+      end
+
+      # Rotates the browser-session seed and invalidates every remember token.
+      #
+      # @return [String] the freshly generated session token seed
+      def reset_session_token!
+        update!(session_token_seed: SecureRandom.hex(16))
+        session_token_seed
       end
     end
   end

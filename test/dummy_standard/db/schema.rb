@@ -5,6 +5,7 @@ ActiveRecord::Schema[8.1].define do
     table.string :email, null: false
     table.string :user_name, null: false
     table.string :password_digest
+    table.string :session_token_seed, default: '', null: false
     table.datetime :email_verified_at
     table.timestamps
   end
