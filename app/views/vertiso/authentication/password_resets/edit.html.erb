@@ -1,0 +1,50 @@
+<%# Copyright © 2026. Copyright Vertiso Corporation, all rights reserved. %>
+<h1>
+  <%= t("vertiso.authentication.password_resets.edit.title") %>
+</h1>
+
+<% if @principal.errors.any? %>
+  <div role="alert">
+    <% @principal.errors.full_messages.each do |message| %>
+      <p>
+        <%= message %>
+      </p>
+    <% end %>
+  </div>
+<% end %>
+
+<%= form_with(
+      model: @principal,
+      url: reset_password_path(token: @token),
+      method: :patch,
+      scope: :user
+    ) do |form| %>
+  <div>
+    <%= form.label(
+          :password,
+          t("vertiso.authentication.password_resets.edit.password")
+        ) %>
+    <%= form.password_field(
+          :password,
+          autocomplete: "new-password",
+          required: true
+        ) %>
+  </div>
+  <div>
+    <%= form.label(
+          :password_confirmation,
+          t(
+            "vertiso.authentication.password_resets.edit.password_confirmation"
+          )
+        ) %>
+    <%= form.password_field(
+          :password_confirmation,
+          autocomplete: "new-password",
+          required: true
+        ) %>
+  </div>
+
+  <%= form.submit(
+        t("vertiso.authentication.password_resets.edit.submit")
+      ) %>
+<% end %>

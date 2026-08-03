@@ -15,10 +15,14 @@ module Vertiso
                     :authentication_session_lifetime,
                     :oauth_principal_attributes,
                     :oauth_user_name_allocator,
+                    :confirmation_required_destination,
                     :post_authentication_destination,
                     :post_registration_destination,
                     :post_confirmation_destination,
-                    :post_logout_destination
+                    :post_logout_destination,
+                    :mailer_sender,
+                    :mailer_host,
+                    :mailer_url_options
 
       # Creates configuration using conventional Rails principal defaults.
       #
@@ -35,10 +39,14 @@ module Vertiso
         @authentication_session_lifetime = 30.days
         @oauth_principal_attributes = ->(auth:) { {} }
         @oauth_user_name_allocator = nil
+        @confirmation_required_destination = nil
         @post_authentication_destination = nil
         @post_registration_destination = nil
         @post_confirmation_destination = nil
         @post_logout_destination = nil
+        @mailer_sender = nil
+        @mailer_host = nil
+        @mailer_url_options = {}
       end
 
       # Resolves the configured host principal class only when it is used.

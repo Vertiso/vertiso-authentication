@@ -1,0 +1,19 @@
+<%# Copyright © 2026. Copyright Vertiso Corporation, all rights reserved. %>
+<h1>
+  <%= t("vertiso.authentication.mailer.password_reset.subject") %>
+</h1>
+<p>
+  <%= t("vertiso.authentication.mailer.password_reset.introduction") %>
+</p>
+<p>
+  <%= link_to(
+        t("vertiso.authentication.mailer.password_reset.action"),
+        @reset_url
+      ) %>
+</p>
+<p>
+  <%= @reset_url %>
+</p>
+<p>
+  <%= t("vertiso.authentication.mailer.password_reset.expiry") %>
+</p>

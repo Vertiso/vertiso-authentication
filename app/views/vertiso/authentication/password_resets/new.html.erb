@@ -1,0 +1,23 @@
+<%# Copyright © 2026. Copyright Vertiso Corporation, all rights reserved. %>
+<h1>
+  <%= t("vertiso.authentication.password_resets.new.title") %>
+</h1>
+
+<%= form_with url: forgot_password_path, method: :post do |form| %>
+  <div>
+    <%= form.label(
+          :email,
+          t("vertiso.authentication.password_resets.new.email")
+        ) %>
+    <%= form.email_field(
+          :email,
+          value: @email,
+          autocomplete: "email",
+          required: true
+        ) %>
+  </div>
+
+  <%= form.submit(
+        t("vertiso.authentication.password_resets.new.submit")
+      ) %>
+<% end %>

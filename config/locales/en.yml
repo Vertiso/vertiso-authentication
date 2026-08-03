@@ -1,6 +1,40 @@
 en:
   vertiso:
     authentication:
+      confirmations:
+        already_confirmed: "Your email is already confirmed."
+        confirmed: "Email confirmed."
+        dispatch_failed: "We couldn't send the confirmation email right now. Try again in a moment."
+        invalid_link: "That confirmation link is invalid or has expired."
+        rate_limited: "You've requested too many confirmation emails in the last hour. Try again later."
+        resent: "Confirmation email sent. Check your inbox."
+      mailer:
+        confirmation:
+          action: "Confirm email"
+          expiry: "This link expires in 24 hours."
+          introduction: "Use this link to confirm %{email}."
+          subject: "Confirm your email"
+        password_reset:
+          action: "Set new password"
+          expiry: "This link expires in 1 hour."
+          introduction: "Use this link to choose a new password."
+          subject: "Reset your password"
+      password_resets:
+        already_signed_in: "You're already signed in. Change your password from account settings."
+        email_sent: "If we have an account at that address, we'll send a password reset link shortly."
+        invalid_link: "That password reset link is invalid or has expired."
+        password_blank: "Password can't be blank."
+        password_changed: "Password updated. You're signed in."
+        rate_limited: "You've requested too many password resets in the last hour. Try again later."
+        edit:
+          password: "Password"
+          password_confirmation: "Password confirmation"
+          submit: "Save password"
+          title: "Choose a new password"
+        new:
+          email: "Email"
+          submit: "Send reset link"
+          title: "Reset your password"
       registrations:
         new:
           email: "Email"

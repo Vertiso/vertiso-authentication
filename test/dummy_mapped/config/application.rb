@@ -12,6 +12,8 @@ module DummyMapped
     config.eager_load = false
     config.active_storage.variant_processor = :disabled
     config.action_controller.allow_forgery_protection = false
+    config.action_mailer.delivery_method = :test
+    config.cache_store = :memory_store
     config.logger = ActiveSupport::Logger.new(IO::NULL)
     config.secret_key_base = "dummy-mapped-test-secret-key-base"
   end

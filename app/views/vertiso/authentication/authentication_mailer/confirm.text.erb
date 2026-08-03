@@ -1,0 +1,13 @@
+<%# Copyright © 2026. Copyright Vertiso Corporation, all rights reserved. %>
+<%= t("vertiso.authentication.mailer.confirmation.subject") %>
+
+<%= t(
+      "vertiso.authentication.mailer.confirmation.introduction",
+      email: @principal.public_send(
+        Vertiso::Authentication.configuration.email_attribute
+      )
+    ) %>
+
+<%= @confirmation_url %>
+
+<%= t("vertiso.authentication.mailer.confirmation.expiry") %>
