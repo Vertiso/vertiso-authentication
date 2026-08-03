@@ -75,7 +75,7 @@ module Vertiso
         return unless url
 
         safe_continuation_location(url:)
-      rescue StandardError
+      rescue URI::Error
         nil
       end
 

@@ -222,6 +222,31 @@ class VertisoAuthenticationSessionsControllerTest < ActionDispatch::IntegrationT
     assert_redirected_to signed_in_location
   end
 
+  test "unexpected continuation validation errors are not swallowed" do
+    controller_class = Class.new do
+      include Vertiso::Authentication::BrowserAuthentication
+
+      # @return [Hash]
+      def session
+        { forward_to_url: "/path" }
+      end
+
+      private
+
+      # @return [void]
+      def safe_continuation_location(url:)
+        raise RuntimeError, "unexpected continuation validator failure: #{url}"
+      end
+    end
+
+    error = assert_raises(RuntimeError) do
+      controller_class.new.recall_location
+    end
+
+    assert_equal "unexpected continuation validator failure: /path",
+                 error.message
+  end
+
   test "login creates one active metadata record keyed by the Rails session public identifier" do
     freeze_time do
       assert_difference(
