@@ -1,0 +1,60 @@
+# Bundler state and vendored dependencies.
+/.bundle/
+/Gemfile.lock
+/vendor/bundle/
+/vendor/cache/
+
+# Packaged gem artifacts.
+/pkg/
+/*.gem
+
+# Test output and coverage.
+/coverage/
+/test/reports/
+/tmp/*
+!/tmp/.keep
+/log/*
+!/log/.keep
+
+# Dummy Rails application runtime artifacts.
+/test/dummy/log/*
+!/test/dummy/log/.keep
+/test/dummy/tmp/*
+!/test/dummy/tmp/.keep
+/test/dummy/storage/*
+!/test/dummy/storage/.keep
+/test/dummy/public/assets/
+/test/dummy/app/assets/builds/*
+!/test/dummy/app/assets/builds/.keep
+
+# Rails credentials and local environment secrets.
+/.env
+/.env.*
+!/.env.example
+/config/*.key
+/test/dummy/config/*.key
+/test/dummy/config/credentials/*.key
+
+# Generated documentation and analysis output.
+/.yardoc/
+/doc/
+/docs/internal/
+/brakeman.html
+/brakeman.json
+/.rubocop-http*
+
+# Ruby language-server state.
+/.ruby-lsp/
+
+# Project-local tool state.
+/.mcp.json
+/.playwright-mcp/
+/.claude/settings.local.json
+/.claude/.credentials.json
+
+# Editors and operating systems.
+/.idea/
+/.vscode/
+*.swp
+*.swo
+.DS_Store
