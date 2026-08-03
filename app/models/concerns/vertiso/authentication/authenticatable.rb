@@ -18,6 +18,12 @@ module Vertiso
                  as: :principal,
                  class_name: "Vertiso::Authentication::AuthenticationSession"
 
+        # Returns linked external identities belonging to this principal.
+        has_many :authentication_oauth_accounts,
+                 as: :principal,
+                 class_name: "Vertiso::Authentication::UserOauthAccount",
+                 dependent: :destroy
+
         before_create :initialize_session_token_seed
         before_validation :normalize_authentication_identity_attributes
 
@@ -78,7 +84,13 @@ module Vertiso
         # @param password [String]
         # @return [ApplicationRecord, false, nil]
         def authenticate(login, password)
-          find_login(login)&.authenticate(password)
+          principal = find_login(login)
+          return principal.authenticate(password) if principal
+
+          linked_account = Vertiso::Authentication::UserOauthAccount.find_by(
+            email: normalize_login(login)
+          )
+          linked_account&.principal&.authenticate(password)
         end
 
         private
