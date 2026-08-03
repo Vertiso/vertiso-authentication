@@ -3,6 +3,21 @@
 # Adds the browser-session invalidation seed to the host principal table.
 class AddAuthenticationToPrincipal < ActiveRecord::Migration[8.1]
   def change
-    add_column :users, :session_token_seed, :string, default: '', null: false
+    add_column :<%= principal_table_name %>, :session_token_seed, :string
+
+    reversible do |direction|
+      direction.up do
+        principal = Class.new(ActiveRecord::Base) do
+          self.table_name = :<%= principal_table_name %>
+        end
+        principal.reset_column_information
+        principal.where(session_token_seed: nil).find_each do |record|
+          record.update!(session_token_seed: SecureRandom.hex(16))
+        end
+      end
+    end
+
+    change_column_default :<%= principal_table_name %>, :session_token_seed, ''
+    change_column_null :<%= principal_table_name %>, :session_token_seed, false
   end
 end
