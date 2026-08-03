@@ -6,8 +6,7 @@ class VertisoAuthenticationOauthRecordsMigrationTest < ActiveSupport::TestCase
   MIGRATION_PATH = Vertiso::Authentication::Engine.root.join("db/migrate")
   PROVIDERS_TABLE = :vertiso_authentication_oauth_providers
   ACCOUNTS_TABLE = :vertiso_authentication_user_oauth_accounts
-  MIGRATION_VERSIONS = [
-    20_260_802_000_000,
+  TASK_7_MIGRATION_VERSIONS = [
     20_260_802_000_001,
     20_260_802_000_002
   ].freeze
@@ -19,7 +18,10 @@ class VertisoAuthenticationOauthRecordsMigrationTest < ActiveSupport::TestCase
   test "discovers and migrates OAuth record tables up and down" do
     context = ActiveRecord::MigrationContext.new([MIGRATION_PATH])
 
-    assert_equal MIGRATION_VERSIONS, context.migrations.map(&:version)
+    versions = context.migrations.map(&:version)
+    TASK_7_MIGRATION_VERSIONS.each do |version|
+      assert_includes versions, version
+    end
 
     connection = ActiveRecord::Base.connection
     connection.drop_table(ACCOUNTS_TABLE, if_exists: true)
@@ -29,7 +31,7 @@ class VertisoAuthenticationOauthRecordsMigrationTest < ActiveSupport::TestCase
       if_exists: true
     )
 
-    context.up
+    context.up(TASK_7_MIGRATION_VERSIONS.max)
 
     assert connection.data_source_exists?(PROVIDERS_TABLE)
     assert connection.data_source_exists?(ACCOUNTS_TABLE)

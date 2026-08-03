@@ -84,11 +84,14 @@ module Vertiso
         # @param password [String]
         # @return [ApplicationRecord, false, nil]
         def authenticate(login, password)
+          return nil if login.blank? || password.blank?
+
           principal = find_login(login)
           return principal.authenticate(password) if principal
 
           linked_account = Vertiso::Authentication::UserOauthAccount.find_by(
-            email: normalize_login(login)
+            email: normalize_login(login),
+            principal_type: polymorphic_name
           )
           linked_account&.principal&.authenticate(password)
         end

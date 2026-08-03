@@ -3,6 +3,13 @@
 require "test_helper"
 require "omniauth"
 
+# Alternate polymorphic principal used to prove host-bound authentication.
+class AlternateAuthenticationPrincipal < ApplicationRecord
+  self.table_name = "users"
+
+  has_secure_password
+end
+
 class VertisoAuthenticationUserOauthAccountTest < ActiveSupport::TestCase
   setup do
     @provider = Vertiso::Authentication::OauthProvider.create!(
@@ -218,6 +225,50 @@ class VertisoAuthenticationUserOauthAccountTest < ActiveSupport::TestCase
                    "shared-login",
                    "DirectPassword1234!"
                  )
+  end
+
+  test "does not authenticate a linked account owned by another principal type" do
+    alternate = AlternateAuthenticationPrincipal.create!(
+      email: "alternate@example.com",
+      user_name: "alternate",
+      password: "AlternatePassword1234!",
+      password_confirmation: "AlternatePassword1234!"
+    )
+    Vertiso::Authentication::UserOauthAccount.create!(
+      principal: alternate,
+      oauth_provider: @provider,
+      provider_uid: "alternate-principal",
+      email: "cross-type@example.com"
+    )
+
+    assert_nil User.authenticate(
+      "cross-type@example.com",
+      "AlternatePassword1234!"
+    )
+  end
+
+  test "rejects a blank login before linked-account lookup" do
+    @principal.authentication_oauth_accounts.create!(
+      oauth_provider: @provider,
+      provider_uid: "blank-linked-login",
+      email: " "
+    )
+
+    assert_nil User.authenticate(" ", "TestPassword1234!")
+    assert_nil User.authenticate(nil, "TestPassword1234!")
+  end
+
+  test "rejects a blank password before canonical or linked lookup" do
+    @principal.authentication_oauth_accounts.create!(
+      oauth_provider: @provider,
+      provider_uid: "linked-blank-password",
+      email: "linked-password@example.com"
+    )
+
+    assert_nil User.authenticate("person@example.com", nil)
+    assert_nil User.authenticate("person@example.com", " ")
+    assert_nil User.authenticate("linked-password@example.com", "")
+    assert_nil User.authenticate("linked-password@example.com", " ")
   end
 
   private
