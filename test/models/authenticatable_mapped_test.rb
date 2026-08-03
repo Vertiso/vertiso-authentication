@@ -4,6 +4,8 @@ require "test_helper"
 
 class VertisoAuthenticationMappedAuthenticatableTest < ActiveSupport::TestCase
   setup do
+    skip "requires the mapped dummy host" unless User.attribute_names.include?("handle")
+
     Vertiso::Authentication.configure do |config|
       config.user_name_attribute = :handle
       config.email_confirmed_at_attribute = :email_confirmed_at
