@@ -16,7 +16,7 @@ ActiveRecord::Schema[8.1].define do
   create_table :vertiso_authentication_authentication_sessions, force: true do |table|
     table.references :principal,
                      polymorphic: true,
-                     index: { name: "index_authentication_sessions_on_principal" }
+                     index: { name: "index_vertiso_auth_sessions_on_principal" }
     table.string :session_identifier
     table.json :data, default: {}, null: false
     table.string :ip_address

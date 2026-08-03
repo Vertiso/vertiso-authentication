@@ -1,0 +1,27 @@
+# Copyright © 2026. Copyright Vertiso Corporation, all rights reserved.
+
+require "test_helper"
+
+class VertisoAuthenticationAuthenticationSessionMigrationTest < ActiveSupport::TestCase
+  MIGRATION_PATH = Vertiso::Authentication::Engine.root.join("db/migrate")
+  TABLE_NAME = :vertiso_authentication_authentication_sessions
+
+  teardown do
+    load Rails.root.join("db/schema.rb")
+  end
+
+  test "discovers and migrates the authentication session table up and down" do
+    context = ActiveRecord::MigrationContext.new([MIGRATION_PATH])
+
+    assert_equal [20_260_802_000_000], context.migrations.map(&:version)
+
+    ActiveRecord::Base.connection.drop_table(TABLE_NAME, if_exists: true)
+    context.up
+
+    assert ActiveRecord::Base.connection.data_source_exists?(TABLE_NAME)
+
+    context.down(0)
+
+    assert_not ActiveRecord::Base.connection.data_source_exists?(TABLE_NAME)
+  end
+end
