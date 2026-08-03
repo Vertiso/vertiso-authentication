@@ -35,6 +35,26 @@ class VertisoAuthenticationSessionsControllerTest < ActionDispatch::IntegrationT
     assert_select "input[autocomplete='current-password'][required]"
   end
 
+  test "development login renders one active developer provider button" do
+    Vertiso::Authentication::OauthProvider.create!(
+      name: "developer",
+      display_name: "Developer",
+      active: true,
+      trusts_email: true
+    )
+
+    original_environment = Rails.env
+    Rails.env = "development"
+    begin
+      get LOGIN_PATH
+    ensure
+      Rails.env = original_environment
+    end
+
+    assert_response :success
+    assert_select "form[action='/auth/developer']", count: 1
+  end
+
   test "logs in by normalized email" do
     post LOGIN_PATH, params: {
       session: {

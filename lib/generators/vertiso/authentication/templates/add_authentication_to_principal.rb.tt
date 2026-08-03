@@ -1,7 +1,15 @@
 # Copyright © 2026. Copyright Vertiso Corporation, all rights reserved.
 
+<%
+  migration_class_name =
+    if defined?(principal_seed_migration_class_name)
+      principal_seed_migration_class_name
+    else
+      "AddAuthenticationToPrincipal"
+    end
+%>
 # Adds the browser-session invalidation seed to the host principal table.
-class AddAuthenticationToPrincipal < ActiveRecord::Migration[8.1]
+class <%= migration_class_name %> < ActiveRecord::Migration[8.1]
   def change
     add_column :<%= principal_table_name %>, :session_token_seed, :string
 

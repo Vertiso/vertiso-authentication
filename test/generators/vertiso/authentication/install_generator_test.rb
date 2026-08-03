@@ -2,6 +2,7 @@
 
 require_relative "generator_test_helper"
 require "generators/vertiso/authentication/install_generator"
+require "open3"
 
 class VertisoAuthenticationInstallGeneratorTest < Rails::Generators::TestCase
   include VertisoAuthenticationGeneratorTestHelper
@@ -111,7 +112,174 @@ class VertisoAuthenticationInstallGeneratorTest < Rails::Generators::TestCase
     )
   end
 
+  test "generated authentication session migration executes with portable index names" do
+    run_generator generator_arguments
+
+    assert_generated_migrations_execute(
+      "create_vertiso_authentication_authentication_sessions"
+    )
+  end
+
+  test "generated principal seed migration loads by its filename class" do
+    run_generator generator_arguments
+
+    assert_generated_migrations_execute(
+      "add_authentication_to_members",
+      mode: "principal"
+    )
+  end
+
+  test "generated fields migration creates portable unique identity indexes" do
+    run_generator generator_arguments
+
+    assert_generated_migrations_execute(
+      "add_vertiso_authentication_fields_to_members",
+      mode: "fields"
+    )
+  end
+
+  test "generated fields migration preserves existing unique identity indexes" do
+    run_generator generator_arguments
+
+    assert_generated_migrations_execute(
+      "add_vertiso_authentication_fields_to_members",
+      mode: "preindexed_fields"
+    )
+  end
+
+  test "all generated migrations execute up and down as one migration set" do
+    run_generator generator_arguments
+
+    assert_generated_migrations_execute(
+      "create_vertiso_authentication_authentication_sessions",
+      "create_vertiso_authentication_oauth_providers",
+      "create_vertiso_authentication_user_oauth_accounts",
+      "add_authentication_to_members",
+      "add_vertiso_authentication_fields_to_members",
+      mode: "all"
+    )
+  end
+
   private
+
+  def assert_generated_migrations_execute(*suffixes, mode: "empty")
+    migration_paths = suffixes.map do |suffix|
+      Dir[
+        File.join(destination_root, "db/migrate/*_#{suffix}.rb")
+      ].fetch(0)
+    end
+    database_path = File.join(
+      destination_root,
+      "tmp",
+      "#{mode}.sqlite3"
+    )
+    FileUtils.mkdir_p(File.dirname(database_path))
+
+    stdout, stderr, status = Open3.capture3(
+      Gem.ruby,
+      "-e",
+      generated_migration_runner,
+      mode,
+      database_path,
+      *migration_paths
+    )
+
+    assert status.success?, "#{stdout}\n#{stderr}"
+    assert_includes stdout, "EXECUTED"
+    assert_includes stdout, "ROLLED_BACK" if mode == "all"
+  ensure
+    FileUtils.rm_f(database_path)
+  end
+
+  def generated_migration_runner
+    <<~'RUBY'
+      require "active_record"
+
+      mode = ARGV.shift
+      database_path = ARGV.shift
+      ActiveRecord::Base.establish_connection(
+        adapter: "sqlite3",
+        database: database_path
+      )
+      connection = ActiveRecord::Base.connection
+
+      if mode == "all"
+        connection.create_table(:members)
+        connection.execute("INSERT INTO members DEFAULT VALUES")
+      elsif mode == "principal"
+        connection.create_table(:members) do |table|
+          table.string :contact_email
+        end
+        connection.execute(
+          "INSERT INTO members (contact_email) VALUES ('one@example.com')"
+        )
+      elsif mode.end_with?("fields")
+        connection.create_table(:members) do |table|
+          if mode == "preindexed_fields"
+            table.string :contact_email
+            table.string :handle
+          end
+        end
+        if mode == "preindexed_fields"
+          connection.add_index(
+            :members,
+            :contact_email,
+            unique: true,
+            name: "existing_members_contact_email_unique"
+          )
+          connection.add_index(
+            :members,
+            :handle,
+            unique: true,
+            name: "existing_members_handle_unique"
+          )
+        end
+      end
+
+      migrations = ARGV.map do |path|
+        load path
+        migration_name = File.basename(path)
+                             .sub(/\A\d+_/, "")
+                             .delete_suffix(".rb")
+                             .camelize
+        Object.const_get(migration_name).new
+      end
+      migrations.each do |migration|
+        migration.migrate(:up)
+      end
+
+      if mode.end_with?("fields")
+        %w[contact_email handle].each do |column|
+          indexes = connection.indexes(:members).select do |index|
+            index.columns == [column] && index.unique
+          end
+          raise "missing unique index for #{column}" unless indexes.one?
+        end
+      end
+
+      puts "EXECUTED"
+
+      if mode == "all"
+        migrations.reverse_each do |migration|
+          migration.migrate(:down)
+        end
+        engine_tables = %i[
+          vertiso_authentication_authentication_sessions
+          vertiso_authentication_oauth_providers
+          vertiso_authentication_user_oauth_accounts
+        ]
+        raise "engine tables remain" if engine_tables.any? do |table|
+          connection.table_exists?(table)
+        end
+        raise "principal table removed" unless connection.table_exists?(:members)
+        raise "principal rows removed" unless connection.select_value(
+          "SELECT COUNT(*) FROM members"
+        ) == 1
+
+        puts "ROLLED_BACK"
+      end
+    RUBY
+  end
 
   def generator_arguments
     [

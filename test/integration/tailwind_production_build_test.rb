@@ -21,7 +21,11 @@ class TailwindProductionBuildTest < ActiveSupport::TestCase
 
     assert status.success?, "#{stdout}\n#{stderr}"
     assert_path_exists output_path
-    assert_includes File.read(output_path), ".min-h-dvh"
+    output = File.read(output_path)
+    assert_includes output, ".min-h-dvh"
+    assert_includes output, ".bg-slate-950"
+    assert_includes output, ".bg-indigo-600"
+    assert_includes output, ".bg-vds-black"
   ensure
     FileUtils.rm_f(output_path)
     FileUtils.rm_rf(Rails.root.join("app/assets/builds/tailwind"))

@@ -43,6 +43,17 @@ module Vertiso
             provider: provider.display_name
           )
         end
+
+        # Returns configured providers without duplicating the developer strategy.
+        #
+        # @return [Enumerable<Vertiso::Authentication::OauthProvider>]
+        def displayed_providers
+          return providers unless include_developer
+
+          providers.reject do |provider|
+            provider.name.to_s == "developer"
+          end
+        end
       end
     end
   end

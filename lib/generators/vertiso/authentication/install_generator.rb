@@ -2,6 +2,7 @@
 
 require "rails/generators"
 require "rails/generators/active_record"
+require "digest"
 require_relative "views_generator"
 
 module Vertiso
@@ -156,6 +157,30 @@ module Vertiso
         # @return [String]
         def principal_table_name
           principal_class_name.tableize
+        end
+
+        # @return [String]
+        def principal_seed_migration_class_name
+          "add_authentication_to_#{principal_table_name}".camelize
+        end
+
+        # @return [String]
+        def principal_email_index_name
+          principal_unique_index_name(options[:email_attribute])
+        end
+
+        # @return [String]
+        def principal_user_name_index_name
+          principal_unique_index_name(options[:user_name_attribute])
+        end
+
+        # @param attribute [String] configured identity attribute
+        # @return [String]
+        def principal_unique_index_name(attribute)
+          identity = "#{principal_table_name}:#{attribute}"
+          digest = Digest::SHA256.hexdigest(identity).first(16)
+
+          "idx_vertiso_auth_#{digest}"
         end
 
         # @return [String]

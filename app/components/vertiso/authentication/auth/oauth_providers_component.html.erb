@@ -2,7 +2,7 @@
 
 <div class="vertiso-auth-providers"
      aria-label="<%= t("vertiso.authentication.components.oauth_providers.label") %>">
-  <% providers.each do |provider| %>
+  <% displayed_providers.each do |provider| %>
     <%= button_to oauth_path.call(provider.name),
                   method: :post,
                   form: {

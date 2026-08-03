@@ -5,3 +5,4 @@
 
 @source "../../../components/vertiso/authentication/**/*.rb";
 @source "../../../components/vertiso/authentication/**/*.html.erb";
+@source "../../../../lib/vertiso/authentication/theme.rb";

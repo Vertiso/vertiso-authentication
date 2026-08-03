@@ -10,5 +10,27 @@ class AddVertisoAuthenticationFieldsTo<%= principal_class_name.pluralize %> < Ac
       column_exists?(:<%= principal_table_name %>, :<%= options[:user_name_attribute] %>)
     add_column :<%= principal_table_name %>, :<%= options[:email_confirmed_at_attribute] %>, :datetime unless
       column_exists?(:<%= principal_table_name %>, :<%= options[:email_confirmed_at_attribute] %>)
+
+    unless index_exists?(
+      :<%= principal_table_name %>,
+      :<%= options[:email_attribute] %>,
+      unique: true
+    )
+      add_index :<%= principal_table_name %>,
+                :<%= options[:email_attribute] %>,
+                unique: true,
+                name: "<%= principal_email_index_name %>"
+    end
+
+    unless index_exists?(
+      :<%= principal_table_name %>,
+      :<%= options[:user_name_attribute] %>,
+      unique: true
+    )
+      add_index :<%= principal_table_name %>,
+                :<%= options[:user_name_attribute] %>,
+                unique: true,
+                name: "<%= principal_user_name_index_name %>"
+    end
   end
 end
