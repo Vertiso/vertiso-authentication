@@ -165,19 +165,61 @@ class VertisoAuthenticationSessionsControllerTest < ActionDispatch::IntegrationT
     assert_redirected_to "/resume?source=saved"
   end
 
-  test "an absolute saved URL cannot redirect login to another origin" do
-    get "/seed-session", params: {
-      forward_to_url: "https://attacker.example/phishing?source=saved"
+  test "recalls only safe relative or same-host absolute continuations" do
+    safe_locations = {
+      "ordinary relative path" => [
+        "/path?query=value",
+        "/path?query=value"
+      ],
+      "same-host absolute URL" => [
+        "https://www.example.com/path?query=value",
+        "/path?query=value"
+      ]
     }
 
-    post LOGIN_PATH, params: {
-      session: {
-        login: "person@example.com",
-        password: PASSWORD
-      }
+    safe_locations.each do |label, (stored_location, expected_location)|
+      assert_saved_location_redirect(
+        stored_location:,
+        expected_location:,
+        message: label
+      )
+    end
+  end
+
+  test "rejects unsafe or malformed saved continuations without raising" do
+    unsafe_locations = {
+      "scheme-relative host" => "//evil.example/path",
+      "percent-decoded double slash" => "/%2Fevil.example/path",
+      "raw backslash" => "/\\evil.example/path",
+      "percent-encoded backslash" => "/%5Cevil.example/path",
+      "raw carriage return and line feed" => "/path\r\nX-Test: injected",
+      "percent-encoded carriage return and line feed" => "/path%0D%0AX-Test%3A%20injected",
+      "opaque URI" => "mailto:person@example.com",
+      "non-HTTP URI" => "ftp://www.example.com/path",
+      "malformed percent escape" => "/path%2",
+      "invalid percent encoding" => "/%FF",
+      "external absolute URL" => "https://attacker.example/path?query=value",
+      "missing path" => "https://www.example.com",
+      "relative path without leading slash" => "relative/path"
     }
 
-    assert_redirected_to "/phishing?source=saved"
+    unsafe_locations.each do |label, stored_location|
+      assert_saved_location_redirect(
+        stored_location:,
+        expected_location: signed_in_location,
+        message: label
+      )
+    end
+  end
+
+  test "a real double-slash GET cannot break the successful login redirect" do
+    get "//resume"
+
+    assert_redirected_to LOGIN_PATH
+
+    post_login
+
+    assert_redirected_to signed_in_location
   end
 
   test "login creates one active metadata record keyed by the Rails session public identifier" do
@@ -293,5 +335,29 @@ class VertisoAuthenticationSessionsControllerTest < ActionDispatch::IntegrationT
         password: PASSWORD
       }
     }
+  end
+
+  def assert_saved_location_redirect(stored_location:, expected_location:, message:)
+    browser = open_session
+    browser.get "/seed-session", params: { forward_to_url: stored_location }
+    assert_equal 200, browser.response.status, message
+
+    browser.post LOGIN_PATH, params: {
+      session: {
+        login: "person@example.com",
+        password: PASSWORD
+      }
+    }
+
+    assert_equal 302, browser.response.status, message
+    assert_equal absolute_url(expected_location), browser.response.location, message
+  end
+
+  def absolute_url(path)
+    "http://www.example.com#{path}"
+  end
+
+  def signed_in_location
+    "/signed-in?principal_id=#{@principal.id}"
   end
 end

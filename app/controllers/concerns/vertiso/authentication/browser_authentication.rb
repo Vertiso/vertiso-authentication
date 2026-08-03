@@ -8,6 +8,10 @@ module Vertiso
     module BrowserAuthentication
       extend ActiveSupport::Concern
 
+      HTTP_CONTINUATION_SCHEMES = %w[http https].freeze
+      INVALID_PERCENT_ESCAPE = /%(?![0-9A-Fa-f]{2})/
+      UNSAFE_CONTINUATION_CHARACTER = /[\\\x00-\x1F\x7F]/
+
       included do
         helper_method :current_principal, :authenticated? if respond_to?(:helper_method)
       end
@@ -70,12 +74,64 @@ module Vertiso
         url = session.delete(:forward_to_url)
         return unless url
 
-        URI.parse(url).request_uri
-      rescue URI::Error
+        safe_continuation_location(url:)
+      rescue StandardError
         nil
       end
 
       private
+
+      # Converts a stored location to a validated relative path and query.
+      #
+      # @param url [Object]
+      # @return [String, nil]
+      def safe_continuation_location(url:)
+        return unless url.is_a?(String) && url.valid_encoding?
+
+        uri = URI.parse(url)
+        return unless safe_continuation_uri?(uri)
+
+        decoded_path = safely_decode_continuation_component(uri.path)
+        decoded_query = safely_decode_continuation_component(uri.query) if uri.query
+        return unless safe_continuation_path?(decoded_path)
+        return if uri.query && !safe_continuation_component?(decoded_query)
+
+        uri.query ? "#{uri.path}?#{uri.query}" : uri.path
+      end
+
+      # @param uri [URI::Generic]
+      # @return [Boolean]
+      def safe_continuation_uri?(uri)
+        return false if uri.opaque
+        return uri.host.nil? if uri.scheme.nil?
+        return false unless HTTP_CONTINUATION_SCHEMES.include?(uri.scheme.downcase)
+
+        uri.host&.casecmp?(request.host)
+      end
+
+      # @param component [String]
+      # @return [String, nil]
+      def safely_decode_continuation_component(component)
+        return if component.match?(INVALID_PERCENT_ESCAPE)
+
+        decoded = URI::RFC2396_PARSER.unescape(component)
+        decoded.force_encoding(Encoding::UTF_8)
+        decoded if decoded.valid_encoding?
+      end
+
+      # @param path [String, nil]
+      # @return [Boolean]
+      def safe_continuation_path?(path)
+        return false if path.nil? || !safe_continuation_component?(path)
+
+        path.start_with?("/") && !path.start_with?("//")
+      end
+
+      # @param component [String, nil]
+      # @return [Boolean]
+      def safe_continuation_component?(component)
+        !component.nil? && !component.match?(UNSAFE_CONTINUATION_CHARACTER)
+      end
 
       # @return [String]
       def authentication_session_identifier
