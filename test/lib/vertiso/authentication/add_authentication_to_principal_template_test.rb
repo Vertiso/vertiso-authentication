@@ -40,6 +40,17 @@ class AddAuthenticationToPrincipalTemplateTest < ActiveSupport::TestCase
     assert_equal '', new_member.session_token_seed
   end
 
+  test 'rolls back the configured principal migration without removing members' do
+    migration = rendered_migration.new
+
+    migration.migrate(:up)
+    assert_nil rollback_error(migration)
+    members.reset_column_information
+
+    assert_not connection.column_exists?(:members, :session_token_seed)
+    assert_equal 2, members.count
+  end
+
   private
 
   # @return [ActiveRecord::ConnectionAdapters::AbstractAdapter]
@@ -59,6 +70,15 @@ class AddAuthenticationToPrincipalTemplateTest < ActiveSupport::TestCase
     scope = Module.new
     scope.module_eval(rendered_template, template_path)
     scope.const_get(:AddAuthenticationToPrincipal)
+  end
+
+  # @param migration [ActiveRecord::Migration]
+  # @return [ActiveRecord::IrreversibleMigration, nil]
+  def rollback_error(migration)
+    migration.migrate(:down)
+    nil
+  rescue ActiveRecord::IrreversibleMigration => e
+    e
   end
 
   # @return [String]

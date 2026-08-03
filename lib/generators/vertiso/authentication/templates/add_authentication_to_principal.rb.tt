@@ -17,7 +17,10 @@ class AddAuthenticationToPrincipal < ActiveRecord::Migration[8.1]
       end
     end
 
-    change_column_default :<%= principal_table_name %>, :session_token_seed, ''
+    change_column_default :<%= principal_table_name %>,
+                          :session_token_seed,
+                          from: nil,
+                          to: ''
     change_column_null :<%= principal_table_name %>, :session_token_seed, false
   end
 end
