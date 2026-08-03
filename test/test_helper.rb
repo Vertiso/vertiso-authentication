@@ -8,3 +8,5 @@ ENV["RAILS_ENV"] ||= "test"
 require_relative "#{dummy_name}/config/environment"
 
 require "rails/test_help"
+
+load Rails.root.join("db/schema.rb")

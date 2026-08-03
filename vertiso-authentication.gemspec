@@ -9,7 +9,7 @@ Gem::Specification.new do |spec|
   spec.summary = "Reusable authentication Rails engine for Vertiso applications."
   spec.description = "A reusable, isolated Rails engine for Vertiso authentication flows."
   spec.homepage = "https://vertiso.com"
-  spec.license = "Proprietary"
+  spec.license = "MIT"
   spec.required_ruby_version = ">= 4.0"
 
   spec.files = Dir["{app,config,lib,test}/**/*", "Gemfile", "Rakefile", "README.md"]
