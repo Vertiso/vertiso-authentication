@@ -1,6 +1,7 @@
 # Copyright © 2026. Copyright Vertiso Corporation, all rights reserved.
 
 require "test_helper"
+require "stringio"
 
 unless defined?(RedisClient::Error)
   # Optional host transport error used to verify production dispatch handling.
@@ -139,10 +140,42 @@ class VertisoAuthenticationPasswordResetsControllerTest < ActionDispatch::Integr
     original_adapter = ActiveJob::Base.queue_adapter
     ActiveJob::Base.queue_adapter =
       EnqueueFailureAdapter.new(RedisClient::Error)
+    reported_errors = []
+    Vertiso::Authentication.configuration.dispatch_error_reporter =
+      ->(error) { reported_errors << error }
 
-    response_contract = post_reset_request(@principal.email)
+    with_operator_log do |output|
+      response_contract = post_reset_request(@principal.email)
 
-    assert_equal neutral_reset_response, response_contract
+      assert_equal neutral_reset_response, response_contract
+      assert_includes output.string,
+                      "[PasswordReset] dispatch failed: RedisClient::Error: " \
+                      "queue unavailable"
+      assert_instance_of RedisClient::Error, reported_errors.first
+    end
+  ensure
+    ActiveJob::Base.queue_adapter = original_adapter if original_adapter
+  end
+
+  test "a literal-false enqueue stays neutral and emits the production operator log" do
+    original_adapter = ActiveJob::Base.queue_adapter
+    ActiveJob::Base.queue_adapter = EnqueueFailureAdapter.new
+    reported_errors = []
+    Vertiso::Authentication.configuration.dispatch_error_reporter =
+      ->(error) { reported_errors << error }
+
+    with_operator_log do |output|
+      response_contract = post_reset_request(@principal.email)
+
+      assert_equal neutral_reset_response, response_contract
+      assert_includes output.string,
+                      "[PasswordReset] dispatch returned false " \
+                      "(adapter swallowed enqueue error)"
+      assert_equal 1, reported_errors.size
+      assert_instance_of RuntimeError, reported_errors.first
+      assert_equal "[PasswordReset] deliver_later returned false",
+                   reported_errors.first.message
+    end
   ensure
     ActiveJob::Base.queue_adapter = original_adapter if original_adapter
   end
@@ -362,6 +395,19 @@ class VertisoAuthenticationPasswordResetsControllerTest < ActionDispatch::Integr
       config.mailer_host = -> { "auth.example.test" }
       config.mailer_url_options = -> { { protocol: "https" } }
     end
+  end
+
+  # Captures the real Rails operator log for a request.
+  #
+  # @yieldparam output [StringIO]
+  # @return [void]
+  def with_operator_log
+    original_logger = Rails.logger
+    output = StringIO.new
+    Rails.logger = ActiveSupport::Logger.new(output)
+    yield output
+  ensure
+    Rails.logger = original_logger
   end
 
   def create_principal(email: "person@example.com", user_name: "person")

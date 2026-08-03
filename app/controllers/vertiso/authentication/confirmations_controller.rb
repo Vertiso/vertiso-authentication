@@ -4,6 +4,8 @@ module Vertiso
   module Authentication
     # Consumes anonymous email-verification tokens and resends confirmation mail.
     class ConfirmationsController < ::ApplicationController
+      include DispatchHandling
+
       before_action :require_confirmation_principal, only: :create
 
       rate_limit to: 10,
@@ -53,7 +55,11 @@ module Vertiso
           return
         end
 
-        if safely_dispatch_confirmation
+        dispatched = safely_dispatch(label: "Resend") do
+          AuthenticationMailer.confirm(current_principal).deliver_later
+        end
+
+        if dispatched
           redirect_to confirmation_required_destination(current_principal),
                       notice: t("vertiso.authentication.confirmations.resent")
         else
@@ -117,27 +123,6 @@ module Vertiso
         return callable.call(self, principal) if callable
 
         fallback
-      end
-
-      # @return [Boolean]
-      def safely_dispatch_confirmation
-        result = AuthenticationMailer.confirm(current_principal).deliver_later
-        result != false
-      rescue StandardError => error
-        raise unless dispatch_transport_error?(error)
-
-        Rails.logger.error(
-          "[Confirmation] dispatch failed: #{error.class}: #{error.message}"
-        )
-        false
-      end
-
-      # @param error [StandardError]
-      # @return [Boolean]
-      def dispatch_transport_error?(error)
-        error.is_a?(ActiveJob::EnqueueError) ||
-          (defined?(RedisClient::Error) && error.is_a?(RedisClient::Error)) ||
-          (defined?(Redis::BaseError) && error.is_a?(Redis::BaseError))
       end
 
       # @return [void]

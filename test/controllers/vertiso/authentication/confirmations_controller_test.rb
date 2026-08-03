@@ -1,6 +1,7 @@
 # Copyright © 2026. Copyright Vertiso Corporation, all rights reserved.
 
 require "test_helper"
+require "stringio"
 
 unless defined?(RedisClient::Error)
   # Optional host transport error used to verify production dispatch handling.
@@ -156,14 +157,26 @@ class VertisoAuthenticationConfirmationsControllerTest < ActionDispatch::Integra
     log_in
     original_adapter = ActiveJob::Base.queue_adapter
     ActiveJob::Base.queue_adapter = EnqueueFailureAdapter.new
+    reported_errors = []
+    Vertiso::Authentication.configuration.dispatch_error_reporter =
+      ->(error) { reported_errors << error }
 
-    post CONFIRMATION_PATH
+    with_operator_log do |output|
+      post CONFIRMATION_PATH
 
-    assert_redirected_to "/confirmation-required"
-    assert_equal I18n.t("vertiso.authentication.confirmations.dispatch_failed"),
-                 flash[:alert]
-    assert_not_equal I18n.t("vertiso.authentication.confirmations.resent"),
-                     flash[:notice]
+      assert_redirected_to "/confirmation-required"
+      assert_equal I18n.t("vertiso.authentication.confirmations.dispatch_failed"),
+                   flash[:alert]
+      assert_not_equal I18n.t("vertiso.authentication.confirmations.resent"),
+                       flash[:notice]
+      assert_includes output.string,
+                      "[Resend] dispatch returned false " \
+                      "(adapter swallowed enqueue error)"
+      assert_equal 1, reported_errors.size
+      assert_instance_of RuntimeError, reported_errors.first
+      assert_equal "[Resend] deliver_later returned false",
+                   reported_errors.first.message
+    end
   ensure
     ActiveJob::Base.queue_adapter = original_adapter if original_adapter
   end
@@ -173,14 +186,87 @@ class VertisoAuthenticationConfirmationsControllerTest < ActionDispatch::Integra
     original_adapter = ActiveJob::Base.queue_adapter
     ActiveJob::Base.queue_adapter =
       EnqueueFailureAdapter.new(RedisClient::Error)
+    reported_errors = []
+    Vertiso::Authentication.configuration.dispatch_error_reporter =
+      ->(error) { reported_errors << error }
 
-    post CONFIRMATION_PATH
+    with_operator_log do |output|
+      post CONFIRMATION_PATH
 
-    assert_redirected_to "/confirmation-required"
-    assert_equal I18n.t("vertiso.authentication.confirmations.dispatch_failed"),
-                 flash[:alert]
+      assert_redirected_to "/confirmation-required"
+      assert_equal I18n.t("vertiso.authentication.confirmations.dispatch_failed"),
+                   flash[:alert]
+      assert_includes output.string,
+                      "[Resend] dispatch failed: RedisClient::Error: " \
+                      "queue unavailable"
+      assert_instance_of RedisClient::Error, reported_errors.first
+    end
   ensure
     ActiveJob::Base.queue_adapter = original_adapter if original_adapter
+  end
+
+  test "unexpected dispatch errors propagate" do
+    harness = Class.new do
+      include Vertiso::Authentication::DispatchHandling
+
+      # @return [Boolean]
+      def call
+        safely_dispatch(label: "Unexpected") do
+          raise RuntimeError, "unexpected failure"
+        end
+      end
+    end
+
+    error = assert_raises(RuntimeError) do
+      harness.new.call
+    end
+
+    assert_equal "unexpected failure", error.message
+  end
+
+  test "a raised Active Job enqueue error is logged and reported" do
+    reported_errors = []
+    Vertiso::Authentication.configuration.dispatch_error_reporter =
+      ->(error) { reported_errors << error }
+    harness = Class.new do
+      include Vertiso::Authentication::DispatchHandling
+
+      # @return [Boolean]
+      def call
+        safely_dispatch(label: "RaisedActiveJob") do
+          raise ActiveJob::EnqueueError, "queue unavailable"
+        end
+      end
+    end
+
+    with_operator_log do |output|
+      assert_not harness.new.call
+      assert_includes output.string,
+                      "[RaisedActiveJob] dispatch failed: " \
+                      "ActiveJob::EnqueueError: queue unavailable"
+      assert_instance_of ActiveJob::EnqueueError, reported_errors.first
+    end
+  end
+
+  test "an optional reporter failure is warned and cannot replace the dispatch result" do
+    Vertiso::Authentication.configuration.dispatch_error_reporter = lambda do |_error|
+      raise RuntimeError, "reporter unavailable"
+    end
+    harness = Class.new do
+      include Vertiso::Authentication::DispatchHandling
+
+      # @return [Boolean]
+      def call
+        safely_dispatch(label: "ReporterFailure") { false }
+      end
+    end
+
+    with_operator_log do |output|
+      assert_not harness.new.call
+      assert_includes output.string,
+                      "[AuthenticationDispatch] report failed: " \
+                      "RuntimeError: reporter unavailable"
+    end
   end
 
   private
@@ -228,6 +314,19 @@ class VertisoAuthenticationConfirmationsControllerTest < ActionDispatch::Integra
     end
   end
 
+  # Captures the real Rails operator log for a request.
+  #
+  # @yieldparam output [StringIO]
+  # @return [void]
+  def with_operator_log
+    original_logger = Rails.logger
+    output = StringIO.new
+    Rails.logger = ActiveSupport::Logger.new(output)
+    yield output
+  ensure
+    Rails.logger = original_logger
+  end
+
   def create_principal
     User.create!(
       email: "person@example.com",
@@ -257,4 +356,5 @@ class VertisoAuthenticationConfirmationsControllerTest < ActionDispatch::Integra
   def mapped_host?
     ENV.fetch("DUMMY_APP", "dummy_standard") == "dummy_mapped"
   end
+
 end

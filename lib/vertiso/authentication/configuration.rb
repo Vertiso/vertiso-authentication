@@ -22,7 +22,8 @@ module Vertiso
                     :post_logout_destination,
                     :mailer_sender,
                     :mailer_host,
-                    :mailer_url_options
+                    :mailer_url_options,
+                    :dispatch_error_reporter
 
       # Creates configuration using conventional Rails principal defaults.
       #
@@ -47,6 +48,7 @@ module Vertiso
         @mailer_sender = nil
         @mailer_host = nil
         @mailer_url_options = {}
+        @dispatch_error_reporter = nil
       end
 
       # Resolves the configured host principal class only when it is used.

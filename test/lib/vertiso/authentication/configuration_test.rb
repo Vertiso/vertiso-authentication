@@ -51,4 +51,13 @@ class VertisoAuthenticationConfigurationTest < ActiveSupport::TestCase
       Vertiso::Authentication.configuration.principal_class
     end
   end
+
+  test "accepts an optional dispatch error reporter" do
+    reporter = ->(_error) {}
+    configuration = Vertiso::Authentication::Configuration.new
+
+    configuration.dispatch_error_reporter = reporter
+
+    assert_same reporter, configuration.dispatch_error_reporter
+  end
 end
