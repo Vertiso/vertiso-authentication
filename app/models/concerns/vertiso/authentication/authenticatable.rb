@@ -8,6 +8,9 @@ module Vertiso
 
       MIN_PASSWORD_LENGTH = 8
       MAX_PASSWORD_LENGTH = 40
+      MIN_EMAIL_LENGTH = 6
+      MAX_EMAIL_LENGTH = 255
+      VALID_EMAIL_REGEX = /\A[\w+\-.]+@[a-z\d-]+(\.[a-z\d-]+)*\.[a-z]+\z/i
       VALID_PASSWORD_REGEX = /\A.*(?=.*\d)(?=.*[!_@#$%^&*-])(?=.*[a-z])(?=.*[A-Z]).*\z/
 
       included do
@@ -29,6 +32,7 @@ module Vertiso
 
         validate :authentication_identity_attributes_are_present
         validate :authentication_identity_attributes_are_unique
+        validate :authentication_email_is_valid
 
         validates :password,
                   presence: true,
@@ -96,6 +100,17 @@ module Vertiso
           linked_account&.principal&.authenticate(password)
         end
 
+        # Returns whether a string satisfies the production email contract.
+        #
+        # @param value [Object]
+        # @return [Boolean]
+        def valid_email?(value)
+          return false unless value.is_a?(String)
+
+          value.length.between?(MIN_EMAIL_LENGTH, MAX_EMAIL_LENGTH) &&
+            value.match?(VALID_EMAIL_REGEX)
+        end
+
         private
 
         # @return [Symbol]
@@ -160,6 +175,16 @@ module Vertiso
           scope = scope.where.not(id:) if persisted?
           errors.add(attribute, :taken) if scope.exists?
         end
+      end
+
+      # Validates the configured canonical email against production rules.
+      #
+      # @return [void]
+      def authentication_email_is_valid
+        email = public_send(configured_email_attribute)
+        return if email.blank? || self.class.valid_email?(email)
+
+        errors.add(configured_email_attribute, :invalid)
       end
 
       # @return [Array<Symbol>]

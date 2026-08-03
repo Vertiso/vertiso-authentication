@@ -35,6 +35,9 @@ en:
           email: "Email"
           submit: "Send reset link"
           title: "Reset your password"
+      oauth_accounts:
+        unlink_failed: "Couldn't unlink that account. Please refresh and try again."
+        unlinked: "%{provider} account unlinked."
       registrations:
         new:
           email: "Email"
@@ -45,6 +48,23 @@ en:
           user_name: "User name"
       sessions:
         invalid_credentials: "Invalid login or password."
+        oauth_account_linked_to_other_principal: "That %{provider} account is already linked to another account."
+        oauth_already_linked: "%{provider} is already linked to this account."
+        confirm_oauth_email: "We sent a confirmation link to %{email}."
+        confirmation_dispatch_failed_oauth: "Account created, but the confirmation email couldn't be sent."
+        create_failed: "Could not create account: %{errors}"
+        email_invalid: "Please enter a valid email address."
+        oauth_email_collision_untrusted: "That email already has an account. Sign in with your password before linking %{provider}."
+        oauth_email_needed: "%{provider} did not share an email address. Enter one to continue."
+        oauth_email_session_expired: "That sign-up session expired. Please try again with your OAuth provider."
+        oauth_failure: "OAuth sign-in failed: %{message}"
+        oauth_linked: "%{provider} account linked."
+        oauth_signed_in: "Signed in as %{email}."
+        oauth_unavailable: "OAuth provider unavailable."
+        prompt_email:
+          email: "Email address"
+          submit: "Continue"
+          title: "Where should we send your confirmation link?"
         new:
           login: "Email or user name"
           password: "Password"

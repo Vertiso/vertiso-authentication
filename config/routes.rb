@@ -5,6 +5,20 @@ Vertiso::Authentication::Engine.routes.draw do
   post "/login", to: "sessions#create", as: :session
   delete "/logout", to: "sessions#destroy", as: :logout
 
+  get "/auth/:provider/callback",
+      to: "sessions#create_by_oauth",
+      as: :oauth_callback
+  get "/auth/failure", to: "sessions#oauth_failure", as: :oauth_failure
+  get "/auth/email",
+      to: "sessions#prompt_email",
+      as: :prompt_oauth_email
+  post "/auth/email",
+       to: "sessions#complete_email_signup",
+       as: :complete_oauth_email
+  delete "/auth/oauth-accounts/:id",
+         to: "oauth_accounts#destroy",
+         as: :oauth_account
+
   get "/register", to: "registrations#new", as: :new_registration
   post "/register", to: "registrations#create", as: :registration
 

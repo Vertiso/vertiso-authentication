@@ -6,6 +6,11 @@ Rails.application.routes.draw do
   mount Vertiso::Authentication::Engine => "/authentication",
                                            as: "vertiso_authentication"
 
+  get "/auth/:provider/callback",
+      to: "vertiso/authentication/sessions#create_by_oauth"
+  get "/auth/failure",
+      to: "vertiso/authentication/sessions#oauth_failure"
+
   get "/authentication-state",
       to: "application#authentication_state",
       as: :authentication_state

@@ -1,0 +1,19 @@
+<%# Copyright © 2026. Copyright Vertiso Corporation, all rights reserved. %>
+
+<h1>
+  <%= t("vertiso.authentication.sessions.prompt_email.title") %>
+</h1>
+
+<%= form_with url: complete_oauth_email_path,
+              method: :post,
+              scope: :oauth_email do |form| %>
+  <%= form.label :email,
+                 t("vertiso.authentication.sessions.prompt_email.email") %>
+  <%= form.email_field :email,
+                       value: @typed_email,
+                       autocomplete: "email",
+                       required: true %>
+  <%= form.submit t(
+    "vertiso.authentication.sessions.prompt_email.submit"
+  ) %>
+<% end %>
