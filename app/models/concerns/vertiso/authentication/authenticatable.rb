@@ -13,6 +13,11 @@ module Vertiso
       included do
         has_secure_password
 
+        # Returns authentication-session metadata belonging to this principal.
+        has_many :authentication_sessions,
+                 as: :principal,
+                 class_name: "Vertiso::Authentication::AuthenticationSession"
+
         before_create :initialize_session_token_seed
         before_validation :normalize_authentication_identity_attributes
 
