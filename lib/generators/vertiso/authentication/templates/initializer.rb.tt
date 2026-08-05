@@ -7,13 +7,16 @@ Vertiso::Authentication.configure do |config|
   config.email_confirmed_at_attribute = :<%= options[:email_confirmed_at_attribute] %>
   config.theme = Vertiso::Authentication::Theme.default
 
-  # Provider values are resolved lazily from host-owned encrypted credentials.
+  # Lambdas defer secret lookup until middleware construction. Their contents
+  # may use ENV.fetch, Rails credentials, or another host-owned secret store.
   # Uncomment only providers configured for this application.
   #
   # config.oauth_provider(
   #   :google_oauth2,
   #   client_id: -> { Rails.application.credentials.dig(:google, :client_id) },
-  #   client_secret: -> { Rails.application.credentials.dig(:google, :client_secret) }
+  #   client_secret: -> { Rails.application.credentials.dig(:google, :client_secret) },
+  #   # Optional API scopes are added without removing required identity scopes.
+  #   scope: "calendar.readonly"
   # )
   # config.oauth_provider(
   #   :apple,
@@ -26,5 +29,16 @@ Vertiso::Authentication.configure do |config|
   #   :github,
   #   client_id: -> { Rails.application.credentials.dig(:github, :client_id) },
   #   client_secret: -> { Rails.application.credentials.dig(:github, :client_secret) }
+  # )
+  #
+  # Any OmniAuth strategy can use explicit positional arguments and options:
+  # config.oauth_provider(
+  #   :auth0,
+  #   strategy: :auth0,
+  #   arguments: [
+  #     -> { ENV.fetch("AUTH0_CLIENT_ID") },
+  #     -> { ENV.fetch("AUTH0_CLIENT_SECRET") }
+  #   ],
+  #   options: { scope: "openid email profile" }
   # )
 end

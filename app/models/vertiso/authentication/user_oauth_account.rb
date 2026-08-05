@@ -7,6 +7,8 @@ module Vertiso
       belongs_to :principal, polymorphic: true
       belongs_to :oauth_provider
 
+      encrypts :user_credentials
+
       normalizes :email, with: ->(email) { email.strip.downcase }
 
       validates :provider_uid, presence: true

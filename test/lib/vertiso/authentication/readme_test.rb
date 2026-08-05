@@ -1,6 +1,7 @@
 # Copyright © 2026. Copyright Vertiso Corporation, all rights reserved.
 
 require "test_helper"
+require "open3"
 
 # Verifies executable README examples and installer capability claims.
 class VertisoAuthenticationReadmeTest < ActiveSupport::TestCase
@@ -35,6 +36,49 @@ class VertisoAuthenticationReadmeTest < ActiveSupport::TestCase
     )
     refute_match(/can generate a minimal one/i, readme)
     refute_match(/generator for applications without one/i, readme)
+  end
+
+  test "generic provider example executes through the public initializer API" do
+    script = <<~RUBY
+      require "vertiso/authentication"
+      #{generic_provider_example}
+      registration = Vertiso::Authentication.configuration.oauth_providers.find do |provider|
+        provider.name == :auth0
+      end
+      abort "missing auth0" unless registration
+      abort "wrong strategy" unless registration.strategy == :auth0
+      expected_arguments = ["documented-client-id", "documented-client-secret"]
+      abort "wrong arguments" unless registration.arguments == expected_arguments
+      abort "wrong scope" unless registration.options[:scope] == "openid email profile"
+    RUBY
+    stdout, stderr, status = Open3.capture3(
+      {
+        "AUTH0_CLIENT_ID" => "documented-client-id",
+        "AUTH0_CLIENT_SECRET" => "documented-client-secret"
+      },
+      Gem.ruby,
+      "-I#{repository_root.join('lib')}",
+      "-e",
+      script
+    )
+
+    assert status.success?, "#{stdout}\n#{stderr}"
+  end
+
+  test "generic provider example requires its optional strategy plugin" do
+    assert_match(/gem "omniauth-auth0"/, readme)
+    assert_match(/strategy gem must be loaded before middleware construction/i,
+                 readme)
+  end
+
+  test "legacy credential migration documents a coordinated secure cutover" do
+    assert_match(/ordinary rolling deploy is unsafe/i, readme)
+    assert_match(/drain every process running the old model/i, readme)
+    assert_match(/disable_ddl_transaction!/, readme)
+    assert_match(/with_lock/, readme)
+    assert_match(/skip.*already encrypted/i, readme)
+    assert_match(/backup.*plaintext credentials/i, readme)
+    assert_match(/encrypted.*restricted.*retention/i, readme)
   end
 
   private
@@ -78,6 +122,16 @@ class VertisoAuthenticationReadmeTest < ActiveSupport::TestCase
     end || flunk("README principal configuration example is missing")
   end
 
+  # Returns the executable generic provider example from the README.
+  #
+  # @return [String]
+  def generic_provider_example
+    ruby_examples.find do |example|
+      example.include?(":auth0") &&
+        example.include?("AUTH0_CLIENT_ID")
+    end || flunk("README generic provider example is missing")
+  end
+
   # @return [Array<String>]
   def ruby_examples
     readme.scan(/```ruby\n(.*?)```/m).flatten
@@ -91,5 +145,12 @@ class VertisoAuthenticationReadmeTest < ActiveSupport::TestCase
   # @return [String]
   def readme_path
     File.expand_path("../../../../README.md", __dir__)
+  end
+
+  # Returns the standalone gem repository root.
+  #
+  # @return [Pathname]
+  def repository_root
+    Pathname.new(File.expand_path("../../../..", __dir__))
   end
 end

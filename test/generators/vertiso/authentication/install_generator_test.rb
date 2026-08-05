@@ -38,6 +38,9 @@ class VertisoAuthenticationInstallGeneratorTest < Rails::Generators::TestCase
       assert_includes content, "credentials.dig(:google, :client_id)"
       assert_includes content, "credentials.dig(:apple, :client_id)"
       assert_includes content, "credentials.dig(:github, :client_id)"
+      assert_includes content, "strategy: :auth0"
+      assert_includes content, 'ENV.fetch("AUTH0_CLIENT_ID")'
+      assert_includes content, "Lambdas defer secret lookup until middleware construction"
     end
     assert_file "config/routes.rb" do |content|
       assert_equal 1, content.scan("mount Vertiso::Authentication::Engine").length
