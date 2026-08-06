@@ -60,8 +60,8 @@ SQLite and PostgreSQL.
 
 The gem uses Minitest and Rails' built-in test infrastructure. It follows a
 Rails-core-first dependency policy. ViewComponent, Tailwind integration,
-`bcrypt`, OmniAuth, the supported provider strategies, and OmniAuth CSRF
-protection are intentional dependencies.
+`bcrypt`, OmniAuth, and OmniAuth CSRF protection are intentional dependencies.
+Concrete OmniAuth provider strategies are optional host dependencies.
 
 ## Architecture
 
@@ -174,7 +174,20 @@ including more than one identity from the same provider.
 Each linked account retains its callback-provided profile and
 `auth.credentials` payload. A host can select a linked identity and use its
 provider-issued access or refresh credentials when the provider has granted
-the required scopes.
+the required scopes. Vertiso Authentication encrypts that credential payload
+at rest with Rails Active Record Encryption. Reading
+`account.user_credentials` transparently returns the original hash, so host
+API integrations do not need a separate decryption step.
+
+The host must configure Active Record Encryption keys before writing linked
+identities. Follow the
+[Rails Active Record Encryption guide](https://guides.rubyonrails.org/active_record_encryption.html)
+to generate, store, and rotate those keys.
+
+When at least one OAuth provider is registered, the engine validates a complete
+encryption and decryption round trip after Rails loads the host initializers.
+Missing or unusable keys therefore fail application boot with an actionable
+configuration error instead of failing the first OAuth callback.
 
 ### Email trust
 
@@ -201,8 +214,23 @@ The host supplies provider application credentials through configuration.
 Values can come from environment variables, Rails encrypted credentials, a
 platform secret store, or another host-controlled source.
 
-The engine will accept value resolvers instead of prescribing environment
-variable names:
+#### Known provider profiles
+
+Vertiso Authentication includes construction profiles for Google, Apple, and
+GitHub. A profile preserves the production positional arguments, required
+scopes, validation, and Apple nonce compatibility. It does not install the
+provider's OmniAuth strategy gem.
+
+Install only the strategies used by the host application:
+
+```ruby
+gem "omniauth-google-oauth2"
+gem "omniauth-apple"
+gem "omniauth-github"
+```
+
+Then register the selected providers. Provider values are host-owned and can
+come from different secret stores in the same application:
 
 ```ruby
 Vertiso::Authentication.configure do |config|
@@ -215,14 +243,100 @@ Vertiso::Authentication.configure do |config|
         :google,
         :client_secret
       )
-    },
-    scope: "email profile"
+    }
   )
 end
 ```
 
-Provider application secrets are passed to the provider strategy. They are not
-stored in the engine's provider or linked-account records.
+The known profile supplies Google's required `email profile` scope. Apple and
+GitHub use the same `config.oauth_provider` API. Selecting a known profile
+without its strategy gem raises a boot error naming the missing optional gem.
+The error does not contain resolved credential values.
+
+A host may add API scopes through the same registration. The profile retains
+the identity scopes required by the authentication and email-trust flow:
+
+```ruby
+config.oauth_provider(
+  :google_oauth2,
+  client_id: -> { ENV.fetch("GOOGLE_CLIENT_ID") },
+  client_secret: -> { ENV.fetch("GOOGLE_CLIENT_SECRET") },
+  scope: "calendar.readonly"
+)
+```
+
+The resulting Google scope contains `email`, `profile`, and
+`calendar.readonly`. GitHub similarly retains `user:email` while adding
+host-requested API scopes. Provider-issued user credentials remain available on
+the linked identity for those authorized API calls.
+
+#### Generic OmniAuth providers
+
+Any OmniAuth strategy can be registered with an explicit strategy, positional
+arguments, and keyword options. Install the strategy plugin in the host first:
+
+```ruby
+gem "omniauth-auth0"
+```
+
+The strategy gem must be loaded before middleware construction. Rails and
+Bundler load the Gemfile entry automatically unless the host sets
+`require: false`; in that case, require the plugin from the host initializer.
+The plugin remains a host dependency and is not installed by
+Vertiso Authentication.
+
+Then configure the provider:
+
+```ruby
+Vertiso::Authentication.configure do |config|
+  config.oauth_provider(
+    :auth0,
+    strategy: :auth0,
+    arguments: [
+      -> { ENV.fetch("AUTH0_CLIENT_ID") },
+      -> { ENV.fetch("AUTH0_CLIENT_SECRET") }
+    ],
+    options: {
+      scope: "openid email profile"
+    }
+  )
+end
+```
+
+The provider key, `:auth0` above, becomes OmniAuth's callback provider name and
+must match the engine's `OauthProvider` database record. The strategy may be a
+symbol or an OmniAuth strategy class. An unknown provider's email is untrusted
+by default. The host can explicitly enable static trust on its database
+provider record when the provider authoritatively verifies every returned
+email.
+
+Known profiles own their positional strategy contract. Passing `arguments:`
+to Google, Apple, GitHub, or the developer provider raises a configuration
+error instead of silently ignoring host values.
+
+#### Why the lambda matters
+
+Provider values accept literals or zero-argument lambdas. A zero-argument
+lambda defers secret lookup until OmniAuth middleware construction:
+
+```ruby
+client_id: -> { ENV.fetch("AUTH0_CLIENT_ID") }
+```
+
+The equivalent direct lookup runs immediately while the Rails initializer is
+evaluated:
+
+```ruby
+client_id: ENV.fetch("AUTH0_CLIENT_ID")
+```
+
+Use a lambda when lookup should remain deferred. `ENV.fetch`, Rails encrypted
+credentials, a platform secret store, and other host-controlled sources are all
+valid. The engine resolves the configured values once for one middleware build,
+passes an immutable copy to the provider strategy, and never stores provider
+application secrets in provider or linked-account records. Rebuilding the
+middleware resolves a new snapshot, allowing a restarted or rebuilt stack to
+pick up rotated credentials without replacing the registration.
 
 ### Developer provider
 
@@ -287,6 +401,10 @@ Applications needing structural changes can run a generator that copies the
 default components and templates into the host, where they override the engine
 defaults.
 
+OAuth provider records may supply an optional `configuration["icon_class"]`.
+The default component renders that class without requiring Font Awesome or any
+other icon library. Hosts can also replace the component markup entirely.
+
 Installation also registers engine component templates as Tailwind content
 sources and connects engine styles to the host build. A dummy-host production
 build test verifies that representative component utilities are emitted.
@@ -314,7 +432,91 @@ test helpers.
 - Security behavior is covered by compatibility and regression tests.
 
 Provider-issued user credential payloads are intentionally retained per linked
-identity so adopting applications can make authorized provider API calls.
+identity so adopting applications can make authorized provider API calls. The
+payload is encrypted at rest with the host application's Active Record
+Encryption keys and is decrypted transparently through the model:
+
+```ruby
+account = current_user.authentication_oauth_accounts.find_by!(
+  oauth_provider: google_provider
+)
+access_token = account.user_credentials.fetch("token")
+```
+
+Application compromise can still expose decrypted credentials available to
+the running process. Encryption at rest protects database contents and backups;
+it does not replace provider scope minimization, token revocation, or host
+application security.
+
+### Legacy application adoption
+
+Existing applications may already have plaintext JSON in
+`vertiso_authentication_user_oauth_accounts.user_credentials`. Migrate those
+rows before disabling plaintext compatibility:
+
+An ordinary rolling deploy is unsafe. Old application processes cannot decrypt
+rows written by the encrypted model and can overwrite migrated rows with new
+plaintext. Use a coordinated maintenance cutover:
+
+1. Create a pre-migration backup. That backup contains plaintext credentials.
+   Keep it encrypted, access-restricted, and under the shortest practical retention
+   period. Verify its destruction after the recovery window closes.
+2. Configure the host application's Active Record Encryption keys as described
+   in the
+   [Rails guide](https://guides.rubyonrails.org/active_record_encryption.html).
+3. Temporarily set the following option for every web, worker, console, and
+   migration process:
+
+   ```ruby
+   config.active_record.encryption.support_unencrypted_data = true
+   ```
+
+4. Enter maintenance mode, stop OAuth callbacks and provider-credential writes,
+   and drain every process running the old model.
+5. Deploy the encrypted `UserOauthAccount` model to every process while keeping
+   plaintext compatibility enabled.
+6. Run a Rails migration like this one:
+
+   ```ruby
+   class EncryptVertisoAuthenticationOauthCredentials < ActiveRecord::Migration[8.1]
+     disable_ddl_transaction!
+
+     class OauthAccount < ActiveRecord::Base
+       self.table_name = "vertiso_authentication_user_oauth_accounts"
+
+       encrypts :user_credentials, support_unencrypted_data: true
+     end
+
+     def up
+       OauthAccount.reset_column_information
+       OauthAccount.find_each do |account|
+         account.with_lock do
+           next if account.encrypted_attribute?(:user_credentials)
+
+           account.encrypt
+         end
+       end
+     end
+
+     def down
+       raise ActiveRecord::IrreversibleMigration
+     end
+   end
+   ```
+
+   Disabling the migration-wide transaction allows `with_lock` to protect one
+   freshly reloaded row at a time. The migration skips rows already encrypted,
+   so a concurrent encryption-aware credential refresh is not overwritten.
+7. Verify that every populated credential value is stored as an Active Record
+   Encryption payload and remains readable through `user_credentials`, then
+   restore normal traffic.
+8. Remove `support_unencrypted_data = true` in a later deployment after every
+   process runs the encrypted model and the migration is verified.
+
+The migration uses a migration-local model so future application-model changes
+cannot alter the data rewrite. It is intentionally irreversible because a
+rollback would restore provider credentials to plaintext. Use the Rails
+guide's previous encryption schemes when rotating keys.
 
 Do not open a public issue containing an exploit, credential, token, or user
 data. A `SECURITY.md` and GitHub private vulnerability-reporting instructions

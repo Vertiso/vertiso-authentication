@@ -125,6 +125,54 @@ class VertisoAuthenticationUserOauthAccountTest < ActiveSupport::TestCase
     )
   end
 
+  test "encrypts provider credentials at rest while preserving hash access" do
+    account = @principal.authentication_oauth_accounts.create!(
+      oauth_provider: @provider,
+      provider_uid: "encrypted-provider-credentials",
+      user_credentials: {
+        "token" => "database-secret-token",
+        "refresh_token" => "database-secret-refresh-token"
+      }
+    )
+
+    raw_credentials = raw_user_credentials(account)
+
+    assert_not_includes raw_credentials, "database-secret-token"
+    assert_not_includes raw_credentials, "database-secret-refresh-token"
+    assert_equal(
+      {
+        "token" => "database-secret-token",
+        "refresh_token" => "database-secret-refresh-token"
+      },
+      account.reload.user_credentials
+    )
+  end
+
+  test "rewrites legacy plaintext credentials during an encryption transition" do
+    account = @principal.authentication_oauth_accounts.create!(
+      oauth_provider: @provider,
+      provider_uid: "legacy-plaintext-credentials"
+    )
+    legacy_credentials = {
+      "token" => "legacy-plaintext-token",
+      "refresh_token" => "legacy-plaintext-refresh-token"
+    }
+
+    ActiveRecord::Encryption.without_encryption do
+      account.update!(user_credentials: legacy_credentials)
+    end
+    assert_includes raw_user_credentials(account), "legacy-plaintext-token"
+
+    with_unencrypted_data_support do
+      assert_equal legacy_credentials, account.reload.user_credentials
+
+      account.encrypt
+    end
+
+    assert_not_includes raw_user_credentials(account), "legacy-plaintext-token"
+    assert_equal legacy_credentials, account.reload.user_credentials
+  end
+
   test "normalizes an optional linked email without making it unique" do
     first = @principal.authentication_oauth_accounts.create!(
       oauth_provider: @provider,
@@ -322,5 +370,32 @@ class VertisoAuthenticationUserOauthAccountTest < ActiveSupport::TestCase
         }
       }
     )
+  end
+
+  # Returns the database representation without model decryption.
+  #
+  # @param account [Vertiso::Authentication::UserOauthAccount]
+  # @return [String]
+  def raw_user_credentials(account)
+    ActiveRecord::Base.connection.select_value(
+      <<~SQL.squish
+        SELECT user_credentials
+        FROM vertiso_authentication_user_oauth_accounts
+        WHERE id = #{Integer(account.id)}
+      SQL
+    ).to_s
+  end
+
+  # Temporarily permits Rails to read a legacy plaintext encrypted attribute.
+  #
+  # @yieldreturn [void]
+  # @return [void]
+  def with_unencrypted_data_support
+    configuration = ActiveRecord::Encryption.config
+    previous_value = configuration.support_unencrypted_data
+    configuration.support_unencrypted_data = true
+    yield
+  ensure
+    configuration.support_unencrypted_data = previous_value
   end
 end

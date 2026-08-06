@@ -11,6 +11,9 @@
                     }
                   },
                   class: "vertiso-auth-button vertiso-auth-button--provider #{theme.button}" do %>
+      <% if (icon_class = provider_icon_class(provider)) %>
+        <i class="<%= icon_class %>" aria-hidden="true"></i>
+      <% end %>
       <span>
         <%= provider_label(provider) %>
       </span>
@@ -49,6 +52,9 @@
         <% linked_accounts.each do |account| %>
           <li id="<%= dom_id(account) %>"
               class="<%= theme.border %> <%= theme.radius %>">
+            <% if (icon_class = provider_icon_class(account.oauth_provider)) %>
+              <i class="<%= icon_class %>" aria-hidden="true"></i>
+            <% end %>
             <span class="<%= theme.foreground %>">
               <%= account.oauth_provider.display_name %>
             </span>

@@ -34,6 +34,15 @@ module OmniAuth
         raise ArgumentError, "rejected #{self.options.api_token}"
       end
     end
+
+    # Real generic strategy with two positional credentials and a scope option.
+    class RegistryGeneric
+      include OmniAuth::Strategy
+
+      args %i[client_id client_secret]
+      option :name, "registry_generic"
+      option :scope
+    end
   end
 end
 
@@ -82,6 +91,23 @@ class VertisoAuthenticationOmniauthMiddlewareTest < ActiveSupport::TestCase
     assert_equal "email profile", strategy.options.scope
   end
 
+  test "adds configured Google API scopes in the constructed middleware" do
+    configuration = Vertiso::Authentication::Configuration.new
+    configuration.oauth_provider(
+      :google_oauth2,
+      client_id: "google-client-id",
+      client_secret: "google-client-secret",
+      scope: "calendar.readonly,email"
+    )
+
+    strategy = strategy_for(
+      build_middleware(configuration:),
+      :google_oauth2
+    )
+
+    assert_equal "email profile calendar.readonly", strategy.options.scope
+  end
+
   test "builds Apple with the production protocol options" do
     strategy = strategy_for(build_middleware, :apple)
 
@@ -102,6 +128,49 @@ class VertisoAuthenticationOmniauthMiddlewareTest < ActiveSupport::TestCase
     assert_equal "github-client-id", strategy.options.client_id
     assert_equal "github-client-secret", strategy.options.client_secret
     assert_equal "user:email", strategy.options.scope
+  end
+
+  test "adds configured GitHub API scopes in the constructed middleware" do
+    configuration = Vertiso::Authentication::Configuration.new
+    configuration.oauth_provider(
+      :github,
+      client_id: "github-client-id",
+      client_secret: "github-client-secret",
+      scope: "repo,gist,user:email"
+    )
+
+    strategy = strategy_for(
+      build_middleware(configuration:),
+      :github
+    )
+
+    assert_equal "user:email,repo,gist", strategy.options.scope
+  end
+
+  test "resolves provider values once for each middleware build" do
+    resolution_count = 0
+    configuration = Vertiso::Authentication::Configuration.new
+    configuration.oauth_provider(
+      :google_oauth2,
+      client_id: lambda {
+        resolution_count += 1
+        "google-client-#{resolution_count}"
+      },
+      client_secret: "google-client-secret"
+    )
+
+    first = strategy_for(
+      build_middleware(configuration:),
+      :google_oauth2
+    )
+    second = strategy_for(
+      build_middleware(configuration:),
+      :google_oauth2
+    )
+
+    assert_equal "google-client-1", first.options.client_id
+    assert_equal "google-client-2", second.options.client_id
+    assert_equal 2, resolution_count
   end
 
   test "preserves the Apple nonce in an encrypted cookie and consumes it on callback" do
@@ -162,6 +231,59 @@ class VertisoAuthenticationOmniauthMiddlewareTest < ActiveSupport::TestCase
     assert_equal "custom-client-id", strategy.options.client_id
     assert_equal secret, strategy.options.client_secret
     assert_equal "custom-api-token", strategy.options.api_token
+  end
+
+  test "builds a generic strategy from explicit positional arguments and options" do
+    configuration = Vertiso::Authentication::Configuration.new
+    configuration.oauth_provider(
+      :enterprise_login,
+      strategy: OmniAuth::Strategies::RegistryGeneric,
+      arguments: [-> { "enterprise-id" }, -> { "enterprise-secret" }],
+      options: { scope: "openid email" }
+    )
+
+    strategy = strategy_for(
+      build_middleware(configuration:),
+      :enterprise_login
+    )
+
+    assert_equal "enterprise-id", strategy.options.client_id
+    assert_equal "enterprise-secret", strategy.options.client_secret
+    assert_equal "openid email", strategy.options.scope
+    assert_equal "enterprise_login", strategy.options.name
+  end
+
+  test "identifies the optional gem when a selected known strategy is missing" do
+    missing_profile = Vertiso::Authentication::Omniauth::ProviderProfile.new(
+      name: :google_oauth2,
+      strategy: :google_oauth2,
+      gem_name: "omniauth-google-oauth2",
+      require_path: "missing-omniauth-google-oauth2",
+      required_keys: %i[client_id client_secret]
+    )
+    registration = Vertiso::Authentication::ProviderRegistration.new(
+      :google_oauth2,
+      client_id: "secret-id",
+      client_secret: "secret-value"
+    )
+    registration.define_singleton_method(:profile) { missing_profile }
+    configuration = Vertiso::Authentication::Configuration.new
+    configuration.oauth_providers << registration
+
+    error = assert_raises(
+      Vertiso::Authentication::Omniauth::ProviderConfigurationError
+    ) do
+      build_middleware(configuration:)
+    end
+
+    assert_equal(
+      "OAuth provider google_oauth2 requires optional gem " \
+      "omniauth-google-oauth2",
+      error.message
+    )
+    refute_includes error.full_message, "secret-id"
+    refute_includes error.full_message, "secret-value"
+    assert_nil error.cause
   end
 
   test "redacts arbitrary strategy construction errors and removes their cause" do

@@ -50,4 +50,49 @@ class VertisoAuthenticationOauthProvidersComponentTest < ActiveSupport::TestCase
     assert_equal "delete", unlink_form.at_css("input[name='_method']")["value"]
     assert_equal "Unlink Google", unlink_form.at_css("button")["aria-label"]
   end
+
+  test "renders host-configured icons without provider-name branching" do
+    principal = User.create!(
+      email: "icons@example.com",
+      user_name: "icons",
+      password: "StrongPassword123!"
+    )
+    icon_provider = Vertiso::Authentication::OauthProvider.create!(
+      name: "enterprise_login",
+      display_name: "Enterprise Login",
+      configuration: {
+        "icon_class" => "host-icon host-icon-enterprise"
+      }
+    )
+    plain_provider = Vertiso::Authentication::OauthProvider.create!(
+      name: "plain_login",
+      display_name: "Plain Login"
+    )
+    account = principal.authentication_oauth_accounts.create!(
+      oauth_provider: icon_provider,
+      provider_uid: "enterprise-123"
+    )
+
+    render_inline(
+      Vertiso::Authentication::Auth::OauthProvidersComponent.new(
+        providers: [icon_provider, plain_provider],
+        linked_accounts: [account],
+        oauth_path: ->(name) { "/auth/#{name}" },
+        unlink_path: ->(identity) { "/oauth-accounts/#{identity.id}" }
+      )
+    )
+
+    document = rendered_document
+    icon_button = document.at_css(
+      "form[action='/auth/enterprise_login'] button"
+    )
+    plain_button = document.at_css("form[action='/auth/plain_login'] button")
+    account_row = document.at_css(
+      "li##{ActionView::RecordIdentifier.dom_id(account)}"
+    )
+
+    assert icon_button.at_css("i.host-icon.host-icon-enterprise")
+    assert account_row.at_css("i.host-icon.host-icon-enterprise")
+    assert_nil plain_button.at_css("i")
+  end
 end

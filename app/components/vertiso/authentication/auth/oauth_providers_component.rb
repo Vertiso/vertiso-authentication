@@ -44,6 +44,16 @@ module Vertiso
           )
         end
 
+        # Returns the optional host-owned provider icon class.
+        #
+        # The engine emits the class without depending on an icon library.
+        #
+        # @param provider [Vertiso::Authentication::OauthProvider]
+        # @return [String, nil]
+        def provider_icon_class(provider)
+          provider.configuration.to_h["icon_class"].presence
+        end
+
         # Returns configured providers without duplicating the developer strategy.
         #
         # @return [Enumerable<Vertiso::Authentication::OauthProvider>]

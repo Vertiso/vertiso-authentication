@@ -68,11 +68,25 @@ module Vertiso
       # Re-registering a strategy replaces its previous registration.
       #
       # @param name [String, Symbol] OmniAuth strategy name
-      # @param resolvers [Hash{Symbol=>Object, #call}] provider literals or
-      #   zero-argument callables
+      # @param strategy [String, Symbol, Class, nil] generic OmniAuth strategy
+      # @param arguments [Array] generic positional strategy arguments
+      # @param options [Hash, nil] generic strategy options
+      # @param values [Hash{Symbol=>Object, #call}] provider values
       # @return [Vertiso::Authentication::ProviderRegistration]
-      def oauth_provider(name, **resolvers)
-        registration = ProviderRegistration.new(name, **resolvers)
+      def oauth_provider(
+        name,
+        strategy: nil,
+        arguments: [],
+        options: nil,
+        **values
+      )
+        registration = ProviderRegistration.new(
+          name,
+          strategy:,
+          arguments:,
+          options:,
+          **values
+        )
         oauth_providers.reject! do |provider|
           provider.name == registration.name
         end
